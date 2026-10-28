@@ -57,10 +57,10 @@
   }
 }
 
-/* The strip's column: the tablist, then a tool slot that holds the compact
-   Radio launcher on desktop (radioPanelPlacement.js). It stands the lane's
-   full height, which makes the strip's size definite so its tabs can share
-   it (see .right-rail-tab); only the strip and the slot take the pointer. */
+/* The strip's column: the tablist, then a tool slot for the compact Radio
+   launcher (radioPanelPlacement.js). It stands the lane's full height, which
+   makes the strip's size definite for the tabs' share (.right-rail-tab); only
+   the strip and the slot take the pointer. */
 #right-rail-column {
   position: absolute;
   top: 0;
@@ -90,8 +90,7 @@
   min-height: 0;
   /* Room for the open tab's bridge on the left. */
   padding-left: var(--right-rail-tabs-gap);
-  /* The rail climbs above its baseline to fit the column (rightPanelRail.js);
-     a lane still shorter shrinks the tabs. The strip never scrolls. */
+  /* Never a scrollbar: a lane too short shrinks the tabs (.right-rail-tab). */
   overflow: hidden;
   pointer-events: auto;
 }
@@ -168,17 +167,16 @@ body:not(.mobile-shell)
   display: none;
 }
 
-/* The strip clips overflow, so the focus ring draws inside the tab. */
+/* The tab's mask covers its own box only: the focus ring draws inside it. */
 #right-rail-tabs > .right-rail-tab:focus-visible {
   outline-offset: -3px;
 }
 
-/* A short strip is shared between the tabs: a zero basis hands the strip's
-   height out in equal parts, a tab's own length caps its part, and what a
-   short label leaves goes to the longer ones, which end up the same height. A
-   strip with room gives every tab its own length. The basis is 0%, not 0:
-   the strip's content size, which sizes the column, comes from the labels. A
-   tab clips its label at the end, faded over the bottom padding. */
+/* A short strip is shared out equally: the zero basis hands every tab the
+   same part, a tab's own length caps it, and a short label's leftover goes
+   to the longer ones; with room each tab is its own length. The basis is
+   0%, not 0, so the strip still sizes to its labels. The label clips at the
+   end, faded over the bottom padding. */
 .right-rail-tab {
   position: relative;
   display: flex;
@@ -231,7 +229,7 @@ body:not(.mobile-shell)
   text-shadow: none;
 }
 
-/* Short windows: tighter tabs before the strip has to scroll. */
+/* Short windows: tighter tabs, so fewer labels clip. */
 @media (max-height: 720px) {
   #right-rail-tabs {
     gap: 3px;

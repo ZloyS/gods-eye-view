@@ -13,13 +13,6 @@ function listenerScope() {
   };
 }
 
-/** The strip tab that controls a right-rail panel, if the panel has one. */
-function railTabFor(panel) {
-  return panel.ownerDocument?.querySelector?.(
-    `[role="tab"][aria-controls="${panel.id}"]`,
-  );
-}
-
 /** Bind collapse buttons and bubbling Escape to an existing panel. */
 export function bindPanelDisclosure({
   panel,
@@ -70,7 +63,9 @@ export function collapsePanelOnEscape(
     panel.querySelector(`[data-dock-toggle-target="${panel.id}"]`) ||
     panel.querySelector(`[data-collapse-target="${panel.id}"]`);
   // A right-rail panel collapses out of view; its tab stays and takes focus.
-  const tab = railTabFor(panel);
+  const tab = panel.ownerDocument?.querySelector?.(
+    `[role="tab"][aria-controls="${panel.id}"]`,
+  );
   const escapedFromDisclosure =
     event.target === disclosure || disclosure?.contains?.(event.target);
   if (tab) tab.focus({ preventScroll: true });

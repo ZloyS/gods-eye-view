@@ -1488,8 +1488,8 @@ unnecessary style writes.
 The compact Radio player is independent of Context: its launcher toggles it
 whether Context is collapsed or open, and only an outside pointer, Escape, its
 close button or its Details button closes it, never a layout pass. The
-expanded Enable's reveal of the directory and Play lands its smooth scroll
-even when a rail layout pass, measuring the panels, cuts it short.
+reveal after the expanded Enable lands its smooth scroll even when a rail
+layout pass cuts it short.
 The right rail skips panels hidden by other CSS (computed `display: none`), but
 keeps the collapsed panels its own exclusive presentation hides, so the owner
 rule can still give them back.
@@ -1510,12 +1510,11 @@ The strip is a vertical `role="tablist"`: Up/Down
 wrap, Home/End jump, the open tab (else the first) is the tab stop, Escape
 inside a panel returns focus to its tab, and the strip precedes the panels in
 the DOM so Tab from the open tab reaches the tool slot and then the panel.
-Labels are the panels' own translated header titles. The rail's lane shares
-the left rail's top; when it is too short for the strip, the rail climbs toward
-the HUD corner above as far as the strip needs (`src/ui/rightPanelRail.js`),
-and a lane still shorter is shared equally between the tabs: a label short
-enough keeps its height, the long ones end up the same height and clip at the
-end; the strip never scrolls. Under the tabs the strip's
+Labels are the panels' own translated header titles. The lane's top follows the
+left rail's; a strip taller than the lane lifts the rail toward the HUD corner
+above (`src/ui/rightPanelRail.js`), and a lane still shorter is shared equally
+between the tabs, so the long labels end up one height and clip; the strip
+never scrolls. Under the tabs the strip's
 column keeps a tool slot (`#right-rail-tools`) that holds the compact Radio
 launcher on desktop: `src/ui/radioPanelPlacement.js` moves it there from
 Context's header, and back for the phone sheet, so the compact player stays one
