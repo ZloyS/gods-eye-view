@@ -138,10 +138,6 @@
   background: rgba(255, 255, 255, 0.06);
 }
 
-#right-rail-tools .context-radio-toggle:focus-visible {
-  outline-offset: -3px;
-}
-
 #right-rail-tools .context-radio-toggle.active {
   color: var(--accent);
 }
@@ -229,23 +225,6 @@ body:not(.mobile-shell)
   text-shadow: none;
 }
 
-/* Short windows: tighter tabs, so fewer labels clip. */
-@media (max-height: 720px) {
-  #right-rail-tabs {
-    gap: 3px;
-  }
-
-  .right-rail-tab {
-    padding: 4px 0;
-    letter-spacing: 1.3px;
-    mask-image: linear-gradient(to bottom, #000 calc(100% - 4px), transparent);
-  }
-
-  #right-rail-tools {
-    margin-top: 4px;
-  }
-}
-
 /* ── The join: surface, outline and shadow of panel plus tab ──────────── */
 .right-rail-join {
   position: absolute;
@@ -303,14 +282,7 @@ body:not(.mobile-shell)
 body:not(.mobile-shell)
   #right-context-rail[data-rail-tabs]
   > [data-panel-id]:not(.collapsed)
-  > :is(
-    .cctv-panel-inner,
-    .street-level-panel-inner,
-    .weather-panel-inner,
-    .recent-imagery-panel-inner,
-    .global-context-panel-inner,
-    [data-panel-surface]
-  ),
+  > :is([data-rail-card], [data-panel-surface]),
 body:not(.mobile-shell)
   #right-context-rail[data-rail-tabs]
   > [data-panel-id]:not(.collapsed)
@@ -337,14 +309,7 @@ body:not(.mobile-shell)
 body:not(.mobile-shell)
   #right-context-rail[data-rail-tabs]
   > [data-panel-id]:not(.collapsed)
-  > :is(
-    .cctv-panel-inner,
-    .street-level-panel-inner,
-    .weather-panel-inner,
-    .recent-imagery-panel-inner,
-    .global-context-panel-inner,
-    [data-panel-surface]
-  ) {
+  > :is([data-rail-card], [data-panel-surface]) {
   min-height: var(--right-rail-panel-cover);
 }
 

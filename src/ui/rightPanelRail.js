@@ -2,6 +2,7 @@ import { allocatePanelStackHeights } from '../panelStackLayout.js';
 import { resolveHudRailLayout } from './panelRailGeometry.js';
 
 import { displayPanelScroller } from './displayPanelScroll.js';
+import { MOBILE_SHELL_MEDIA_QUERY } from './mobileShellContract.js';
 
 /**
  * Where the left rail's top will settle, not where it is mid-transition:
@@ -77,7 +78,7 @@ export function layoutRightPanelRail({
   // presentation-collapsed; the marker is distinct from the left rail's
   // space-based collapse. Phone sheets show several panels at once, so phones
   // get every panel back.
-  const isMobile = windowRef.matchMedia('(max-width: 720px)').matches;
+  const isMobile = windowRef.matchMedia(MOBILE_SHELL_MEDIA_QUERY).matches;
   if (!isMobile) {
     const expanded = panels.filter(
       (panel) => !panel.classList.contains('collapsed'),

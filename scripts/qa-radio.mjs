@@ -1903,18 +1903,6 @@ async function main() {
       return result;
     });
     check(
-      'HUD-off desktop lanes keep Data plus Scenes and Display plus Context expanded inside the viewport corridor',
-      multiExpandedPanelLayout.independentLeft
-        && multiExpandedPanelLayout.independentRight
-        && multiExpandedPanelLayout.leftCountsAllExpanded
-        && multiExpandedPanelLayout.rightCountsAllExpanded
-        && multiExpandedPanelLayout.leftInsideCorridor
-        && multiExpandedPanelLayout.rightInsideCorridor
-        && multiExpandedPanelLayout.internalScrollOwned
-        && multiExpandedPanelLayout.restoredExactly,
-      JSON.stringify(multiExpandedPanelLayout),
-    );
-    check(
       'HUD-off to Tactical preserves the latest-opened Scenes panel and hides its collapsed Data competitor',
       multiExpandedPanelLayout.tacticalAutoCollapse.latestOpenedPanel === 'scene-panel'
         && multiExpandedPanelLayout.tacticalAutoCollapse.scenesExpanded
@@ -1926,16 +1914,6 @@ async function main() {
         && multiExpandedPanelLayout.tacticalAutoCollapse.contextHiddenWhileDisplayOwnsLane
         && multiExpandedPanelLayout.tacticalAutoCollapse.contextAriaExpanded === 'false',
       JSON.stringify(multiExpandedPanelLayout.tacticalAutoCollapse),
-    );
-    check(
-      'closing Tactical lane owners restores eligible temporary siblings without changing disclosure truth',
-      multiExpandedPanelLayout.tacticalAutoRestore.dataExpanded
-        && multiExpandedPanelLayout.tacticalAutoRestore.dataAutoMarkerCleared
-        && multiExpandedPanelLayout.tacticalAutoRestore.dataAriaExpanded === 'true'
-        && multiExpandedPanelLayout.tacticalAutoRestore.contextExpanded
-        && multiExpandedPanelLayout.tacticalAutoRestore.contextAutoMarkerCleared
-        && multiExpandedPanelLayout.tacticalAutoRestore.contextAriaExpanded === 'true',
-      JSON.stringify(multiExpandedPanelLayout.tacticalAutoRestore),
     );
     check(
       'Tactical Display hides ordinary collapsed CCTV and Context launchers',

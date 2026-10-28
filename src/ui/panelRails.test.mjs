@@ -1,3 +1,4 @@
+import { makeDocument } from '../testSupport/fakeDom.mjs';
 import { readStylesheet } from '../testSupport/readStylesheet.mjs';
 import { displayPanelScroller } from './displayPanelScroll.js';
 import assert from 'node:assert/strict';
@@ -73,73 +74,26 @@ test('Cyber restored accordion prefers keyboard focus when no explicit owner exi
   assert.equal(f.second.classList.contains('collapsed'), false);
 });
 
+const doc = makeDocument();
+/** A rail panel (or any rail-side box) with its measured box and no content. */
 function element(
   id,
   { height = 42, top = 234, left = 20, width = 272, collapsed = false } = {},
 ) {
-  const classes = new Set(collapsed ? ['collapsed'] : []);
-  const properties = new Map();
-  const attributes = new Map();
-  const writes = [];
-  const node = {
-    id,
-    children: [],
-    dataset: {},
-    parentElement: null,
-    scrollHeight: height,
-    clientHeight: height,
-    scrollTop: 0,
-    computed: {
-      display: 'block',
-      visibility: 'visible',
-      opacity: '1',
-      rowGap: '12px',
-    },
-    rect: {
-      top,
-      left,
-      width,
-      height,
-      right: left + width,
-      bottom: top + height,
-    },
-    classList: {
-      contains: (name) => classes.has(name),
-      add: (...names) => names.forEach((name) => classes.add(name)),
-      remove: (...names) => names.forEach((name) => classes.delete(name)),
-      toggle(name, value) {
-        if (value) classes.add(name);
-        else classes.delete(name);
-      },
-    },
-    style: {
-      setProperty(name, value) {
-        writes.push(['set', name, value]);
-        properties.set(name, value);
-      },
-      getPropertyValue: (name) => properties.get(name) || '',
-      removeProperty(name) {
-        writes.push(['remove', name]);
-        properties.delete(name);
-      },
-    },
-    getBoundingClientRect() {
-      return this.rect;
-    },
-    matches: (selector) => selector === '[data-panel-id]',
-    contains(target) {
-      return (
-        target === this || this.children.some((child) => child.contains(target))
-      );
-    },
-    querySelectorAll() {
-      return this.children;
-    },
-    setAttribute: (name, value) => attributes.set(name, value),
-    removeAttribute: (name) => attributes.delete(name),
-    getAttribute: (name) => attributes.get(name),
-    writes,
-  };
+  const node = doc.createElement('div');
+  node.id = id;
+  node.dataset.panelId = id;
+  if (collapsed) node.classList.add('collapsed');
+  node.scrollHeight = node.clientHeight = height;
+  node.computed.rowGap = '12px';
+  Object.assign(node.rect, {
+    top,
+    left,
+    width,
+    height,
+    right: left + width,
+    bottom: top + height,
+  });
   return node;
 }
 function fixture(
@@ -245,7 +199,7 @@ for (const side of ['left', 'right']) {
       f.first.style.getPropertyValue(`--${side}-panel-allocated-height`),
       '',
     );
-    assert.equal(f.first.getAttribute('aria-hidden'), undefined);
+    assert.equal(f.first.getAttribute('aria-hidden'), null);
   });
 }
 
@@ -494,8 +448,7 @@ function thrashingRightRail({ focused = false, weatherOpen = false } = {}) {
   f.options.preferredPanelId = cctv.id;
   f.options.displayPanel = display;
   const allocation = '--right-panel-allocated-height';
-  const measuring = () =>
-    f.stack.getAttribute('data-rail-measuring') !== undefined;
+  const measuring = () => f.stack.getAttribute('data-rail-measuring') !== null;
   for (const panel of f.stack.children) {
     panel.parentElement = f.stack;
     panel.intrinsicHeight = panel.rect.height;
@@ -544,7 +497,7 @@ for (const focused of [false, true]) {
       modes.push(f.stack.classList.contains('layout-focus'));
       needs.push(f.stack.dataset.requiredHeight);
       assert.equal(f.stack.dataset.availableHeight, '443.6');
-      assert.equal(f.stack.getAttribute('data-rail-measuring'), undefined);
+      assert.equal(f.stack.getAttribute('data-rail-measuring'), null);
     }
     assert.deepEqual(modes.slice(1), Array(9).fill(true));
     // A collapsed peer is hidden behind the tab strip and takes no room.
@@ -621,7 +574,7 @@ test('right rail restores presentation even when intrinsic measurement throws', 
     throw new Error('measurement failed');
   };
   assert.throws(() => f.run(), /measurement failed/);
-  assert.equal(f.stack.getAttribute('data-rail-measuring'), undefined);
+  assert.equal(f.stack.getAttribute('data-rail-measuring'), null);
 });
 
 test('right rail measuring pass keeps an opted-in scroller position', () => {
@@ -775,7 +728,7 @@ test('right layout ignores a CSS-hidden expanded panel: it is neither owner nor 
   assert.equal(f.first.getAttribute('aria-hidden'), 'true');
   assert.equal(f.second.getAttribute('aria-hidden'), 'true');
   assert.equal(weather.classList.contains('collapsed'), false);
-  assert.equal(weather.getAttribute('aria-hidden'), undefined);
+  assert.equal(weather.getAttribute('aria-hidden'), null);
   assert.equal(
     weather.style.getPropertyValue('--right-panel-allocated-height'),
     '',
@@ -829,7 +782,7 @@ test('right layout ignores a hidden panel: no lane, no gap, no auto-collapse', (
     imagery.style.getPropertyValue('--right-panel-allocated-height'),
     '',
   );
-  assert.equal(imagery.getAttribute('aria-hidden'), undefined);
+  assert.equal(imagery.getAttribute('aria-hidden'), null);
   const alone = parseFloat(
     f.first.style.getPropertyValue('--right-panel-allocated-height'),
   );

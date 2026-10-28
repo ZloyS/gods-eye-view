@@ -992,10 +992,9 @@ test('the DISPLAY rail starts open on a first desktop run, and a stored choice w
   // decides for itself.
   assert.match(
     ui,
-    /if \(panelId === 'pp-toggles' && stored === null\)\s+collapsed = !allowStored \|\| isPhoneViewport\(\);/,
+    /if \(panelId === 'pp-toggles' && stored === null\)\s+collapsed =\s+!allowStored \|\|\s+globalThis\.matchMedia\?\.\(MOBILE_SHELL_MEDIA_QUERY\)\?\.matches === true;/,
     'first desktop run must open DISPLAY; phones and share links keep it closed',
   );
-  assert.match(ui, /matchMedia\?\.\('\(max-width: 720px\)'\)/);
   // The first-run default may only apply when NOTHING is stored: a visitor who
   // opened the rail keeps it open, and one who closed it keeps it closed.
   const block = ui.slice(

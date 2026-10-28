@@ -1,5 +1,6 @@
 /** Own panel collapsed-state preferences and the one-time layout-reset notice. */
 import { t } from '../i18n/index.js';
+import { MOBILE_SHELL_MEDIA_QUERY } from './mobileShellContract.js';
 /** Versioned localStorage namespace prefix to invalidate stale panel layouts. */
 const PANEL_LAYOUT_STORAGE_VERSION = 'v6';
 /**
@@ -13,10 +14,6 @@ const RETIRED_PANEL_KEY_PREFIXES = [
   `godsEyeView.${PANEL_POSITION_STORAGE_VERSION}.panelPos.`,
   `godsEyeView.${PANEL_POSITION_STORAGE_VERSION}.panelFloatHintShown`,
 ];
-/** Phones present the rail as sheets (mobileShell.js), not as a tab strip. */
-const isPhoneViewport = () =>
-  globalThis.matchMedia?.('(max-width: 720px)')?.matches === true;
-
 export class PanelPositionControls {
   constructor({ syncPanelCollapseButton, showToast }) {
     this._syncPanelCollapseButton = syncPanelCollapseButton;
@@ -76,7 +73,9 @@ export class PanelPositionControls {
     // keep it collapsed (their sheets present the rail); a share link decides
     // for itself. A stored choice wins in both directions.
     if (panelId === 'pp-toggles' && stored === null)
-      collapsed = !allowStored || isPhoneViewport();
+      collapsed =
+        !allowStored ||
+        globalThis.matchMedia?.(MOBILE_SHELL_MEDIA_QUERY)?.matches === true;
     panelEl.classList.toggle('collapsed', collapsed);
     // Bodies that expand themselves on first appearance must not override a
     // choice the user (or a share link) already made.

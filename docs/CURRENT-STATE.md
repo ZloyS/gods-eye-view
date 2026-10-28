@@ -1499,12 +1499,11 @@ rule can still give them back.
 On desktop the right rail (Display, CCTV, Street Level, Context, plus Weather
 and Recent Imagery while shown) is a vertical tab strip
 (`src/ui/rightRailTabs.js`, `src/ui/styles/right-rail-tabs.css`): one sideways
-tab per panel at the rail's right edge, the open panel beside it, collapsed
-panels hidden in every HUD layout. A tab toggles its panel through
-`setPanelCollapsed` with the explicit flag, so opening one collapses the others
-and saved preferences, share links and the Context/Radio ownership rules are
-unchanged; the panels' `collapsed` classes remain the only state, mirrored
-through a MutationObserver. On desktop the panels' own header collapse
+tab per panel at the rail's right edge, the open panel beside it. A tab
+toggles its panel through `setPanelCollapsed` with the explicit flag; the
+panels' `collapsed` classes remain the only state, mirrored through a
+MutationObserver, and the owner rule above hides the rest. On desktop the
+panels' own header collapse
 buttons are hidden: the tab is the one control, Escape its keyboard twin.
 The strip is a vertical `role="tablist"`: Up/Down
 wrap, Home/End jump, the open tab (else the first) is the tab stop, Escape

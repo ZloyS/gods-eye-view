@@ -1,3 +1,5 @@
+import { MOBILE_SHELL_CLASS } from './mobileShellContract.js';
+
 /**
  * Keep Radio in Context in every theme, reusing the same playback controls.
  * The compact launcher (the dock) sits in the right rail's tool slot under the
@@ -17,7 +19,7 @@ export function syncRadioPanelPlacement(doc) {
   if (!panel || !parent || !header || !dock || !mini) return;
   if (panel.parentElement !== parent) parent.append(panel);
   const slot = doc.getElementById('right-rail-tools');
-  const phone = Boolean(doc.body?.classList?.contains?.('mobile-shell'));
+  const phone = Boolean(doc.body?.classList?.contains?.(MOBILE_SHELL_CLASS));
   if (slot && !phone) {
     if (dock.parentElement !== slot) slot.append(dock);
   } else if (dock.parentElement !== header) {

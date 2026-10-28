@@ -13,9 +13,12 @@
 
 import { EXCLUSIVE_SURFACE_CLASSES } from '../exclusiveSurfaces.js';
 import { msg, t } from '../i18n/index.js';
+import {
+  MOBILE_SHELL_CLASS,
+  MOBILE_SHELL_MEDIA_QUERY,
+} from './mobileShellContract.js';
 
-export const MOBILE_SHELL_MEDIA_QUERY = '(max-width: 720px)';
-export const MOBILE_SHELL_CLASS = 'mobile-shell';
+export { MOBILE_SHELL_CLASS, MOBILE_SHELL_MEDIA_QUERY };
 export const MOBILE_SHEET_ATTR = 'data-mobile-sheet';
 
 /**

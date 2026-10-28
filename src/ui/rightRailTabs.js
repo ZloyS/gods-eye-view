@@ -6,26 +6,18 @@
  * and the rail layout pass are untouched. Phones hide the strip and keep their
  * sheet shell (mobileShell.js).
  *
- * The open tab and its panel are one surface: the strip measures both, traces
- * their joined silhouette as an SVG path (railJoinPath) and keeps a join
- * element under the panels whose layers blur, tint, outline and shadow that
- * shape (styles/right-rail-tabs.css).
- *
- * The strip sits in a column with a tool slot under it. The compact Radio
- * launcher lives in the slot on desktop (radioPanelPlacement.js), where the
- * collapsed Context that carries it otherwise is hidden.
+ * The open tab and its panel are drawn as one surface by a join element the
+ * strip shapes from both (railJoinPath); styles/right-rail-tabs.css has the
+ * layers. A tool slot under the tabs holds the compact Radio launcher on
+ * desktop (radioPanelPlacement.js).
  */
 import { msg, t } from '../i18n/index.js';
-
-export const RIGHT_RAIL_TABS_ID = 'right-rail-tabs';
-export const RIGHT_RAIL_COLUMN_ID = 'right-rail-column';
-export const RIGHT_RAIL_TOOLS_ID = 'right-rail-tools';
 
 /**
  * Marks the rail while its strip is mounted; styles/right-rail-tabs.css keys
  * the tab geometry on it, so a rail without a strip keeps its plain layout.
  */
-export const RIGHT_RAIL_TABS_ATTRIBUTE = 'data-rail-tabs';
+const RAIL_TABS_ATTRIBUTE = 'data-rail-tabs';
 
 const SVG_NS = 'http://www.w3.org/2000/svg';
 
@@ -52,13 +44,6 @@ export function nextRailTabIndex(key, index, count) {
     default:
       return current;
   }
-}
-
-/** The panels a rail presents as tabs, in rail order. */
-export function railTabPanels(rail) {
-  return [...(rail?.children || [])].filter(
-    (panel) => panel.matches?.('[data-panel-id]') && !panel.hidden,
-  );
 }
 
 /**
@@ -208,35 +193,27 @@ function panelTitle(panel) {
  * @param {(panelId: string, collapsed: boolean, options: object) => void} input.setPanelCollapsed
  *   Owner callback; the strip never touches panel classes itself.
  * @param {Document} [input.documentRef]
- * @returns {{ element: HTMLElement, column: HTMLElement, tools: HTMLElement,
- *   join: HTMLElement, sync: () => void, destroy: () => void }}
+ * @returns {{ element: HTMLElement, sync: () => void, destroy: () => void }}
  */
 export function createRightRailTabs({
   rail,
   setPanelCollapsed,
-  documentRef = rail?.ownerDocument,
+  documentRef = rail.ownerDocument,
 }) {
-  if (!rail || !documentRef || typeof setPanelCollapsed !== 'function') {
-    throw new TypeError(
-      'Right rail tabs require a rail, a document and setPanelCollapsed',
-    );
-  }
   const column = documentRef.createElement('div');
-  column.id = RIGHT_RAIL_COLUMN_ID;
+  column.id = 'right-rail-column';
   const strip = documentRef.createElement('div');
-  strip.id = RIGHT_RAIL_TABS_ID;
+  strip.id = 'right-rail-tabs';
   strip.setAttribute('role', 'tablist');
   strip.setAttribute('aria-orientation', 'vertical');
   strip.setAttribute('aria-label', t('Panels'));
   const tools = documentRef.createElement('div');
-  tools.id = RIGHT_RAIL_TOOLS_ID;
+  tools.id = 'right-rail-tools';
   column.append(strip, tools);
-  rail.setAttribute(RIGHT_RAIL_TABS_ATTRIBUTE, 'vertical');
+  rail.setAttribute(RAIL_TABS_ATTRIBUTE, 'vertical');
 
   // The join: shadow under, glass, outline over; all shaped by one path.
-  const svg = (tag) =>
-    documentRef.createElementNS?.(SVG_NS, tag) ??
-    documentRef.createElement(tag);
+  const svg = (tag) => documentRef.createElementNS(SVG_NS, tag);
   const join = documentRef.createElement('div');
   join.className = 'right-rail-join';
   join.setAttribute('aria-hidden', 'true');
@@ -377,7 +354,9 @@ export function createRightRailTabs({
     // owners reveal them by attribute, which must create their tabs.
     for (const panel of rail.children)
       if (panel.matches?.('[data-panel-id]')) observe(panel);
-    const panels = railTabPanels(rail);
+    const panels = [...rail.children].filter(
+      (panel) => panel.matches?.('[data-panel-id]') && !panel.hidden,
+    );
     const focusOwner =
       panels.find((panel) => !panel.classList.contains('collapsed')) ||
       panels[0];
@@ -436,9 +415,6 @@ export function createRightRailTabs({
 
   return {
     element: strip,
-    column,
-    tools,
-    join,
     sync,
     destroy() {
       if (destroyed) return;
@@ -449,7 +425,7 @@ export function createRightRailTabs({
       strip.removeEventListener('keydown', onKeydown);
       column.remove();
       join.remove();
-      rail.removeAttribute(RIGHT_RAIL_TABS_ATTRIBUTE);
+      rail.removeAttribute(RAIL_TABS_ATTRIBUTE);
       placeJoin(null, null);
       entries.clear();
     },

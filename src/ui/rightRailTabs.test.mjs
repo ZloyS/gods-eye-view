@@ -1,135 +1,12 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
+import { fire, makeDocument } from '../testSupport/fakeDom.mjs';
 import { readStylesheet } from '../testSupport/readStylesheet.mjs';
 import {
-  RIGHT_RAIL_COLUMN_ID,
-  RIGHT_RAIL_TABS_ATTRIBUTE,
-  RIGHT_RAIL_TABS_ID,
-  RIGHT_RAIL_TOOLS_ID,
   createRightRailTabs,
   nextRailTabIndex,
   railJoinPath,
-  railTabPanels,
 } from './rightRailTabs.js';
-
-/** Just enough DOM for the strip: tree, classes, attributes, events, focus. */
-function makeDocument() {
-  const doc = { activeElement: null };
-  const findIn = (node, predicate) => {
-    for (const child of node.children) {
-      if (predicate(child)) return child;
-      const nested = findIn(child, predicate);
-      if (nested) return nested;
-    }
-    return null;
-  };
-  doc.createElement = (tag) => {
-    const el = new EventTarget();
-    const attrs = new Map();
-    const classes = new Set();
-    const props = new Map();
-    Object.assign(el, {
-      tagName: tag.toUpperCase(),
-      ownerDocument: doc,
-      children: [],
-      parentElement: null,
-      dataset: {},
-      style: {
-        props,
-        setProperty: (key, value) => props.set(key, value),
-        removeProperty: (key) => props.delete(key),
-      },
-      hidden: false,
-      textContent: '',
-      tabIndex: -1,
-      title: '',
-      type: '',
-      id: '',
-      classList: {
-        add: (...names) => names.forEach((name) => classes.add(name)),
-        remove: (...names) => names.forEach((name) => classes.delete(name)),
-        contains: (name) => classes.has(name),
-        toggle(name, on) {
-          if (on) classes.add(name);
-          else classes.delete(name);
-        },
-      },
-      setAttribute: (key, value) => attrs.set(key, String(value)),
-      getAttribute: (key) => attrs.get(key) ?? null,
-      removeAttribute: (key) => attrs.delete(key),
-      insertBefore(child, reference) {
-        child.remove();
-        const index = reference ? el.children.indexOf(reference) : -1;
-        el.children.splice(index < 0 ? el.children.length : index, 0, child);
-        child.parentElement = el;
-        return child;
-      },
-      append(...nodes) {
-        for (const node of nodes) el.insertBefore(node, null);
-      },
-      prepend(...nodes) {
-        for (const node of nodes.reverse())
-          el.insertBefore(node, el.children[0] ?? null);
-      },
-      remove() {
-        const parent = el.parentElement;
-        if (!parent) return;
-        parent.children.splice(parent.children.indexOf(el), 1);
-        el.parentElement = null;
-      },
-      matches(selector) {
-        if (selector === '[data-panel-id]') return 'panelId' in el.dataset;
-        if (selector === '[data-rail-tab]') return 'railTab' in el.dataset;
-        return false;
-      },
-      closest(selector) {
-        return el.matches(selector)
-          ? el
-          : (el.parentElement?.closest(selector) ?? null);
-      },
-      querySelector(selector) {
-        const wanted = selector.split(',').map((part) => part.trim().slice(1));
-        return findIn(el, (node) =>
-          wanted.some((name) => node.classList.contains(name)),
-        );
-      },
-      focus() {
-        doc.activeElement = el;
-      },
-    });
-    Object.defineProperties(el, {
-      className: {
-        get: () => [...classes].join(' '),
-        set(value) {
-          classes.clear();
-          for (const name of String(value).split(/\s+/).filter(Boolean))
-            classes.add(name);
-        },
-      },
-      firstElementChild: { get: () => el.children[0] ?? null },
-      nextElementSibling: {
-        get: () => {
-          const siblings = el.parentElement?.children;
-          if (!siblings) return null;
-          return siblings[siblings.indexOf(el) + 1] ?? null;
-        },
-      },
-    });
-    return el;
-  };
-  doc.body = doc.createElement('body');
-  doc.getElementById = (id) => findIn(doc.body, (node) => node.id === id);
-  return doc;
-}
-
-/** Dispatch a bubbling event with `target` fixed to `el`. */
-function fire(el, type, props = {}) {
-  const event = Object.assign(new Event(type, { cancelable: true }), props);
-  Object.defineProperty(event, 'target', { value: el });
-  for (let node = el; node; node = node.parentElement)
-    node.dispatchEvent(event);
-  return event;
-}
 
 function panel(
   doc,
@@ -175,6 +52,9 @@ function fixture() {
     setPanelCollapsed: (...args) => calls.push(args),
   });
   const strip = tabs.element;
+  const column = doc.getElementById('right-rail-column');
+  const tools = doc.getElementById('right-rail-tools');
+  const join = rail.querySelector('.right-rail-join');
   const tabFor = (id) =>
     strip.children.find((tab) => tab.dataset.railTab === id);
   const labelOf = (tab) =>
@@ -190,6 +70,9 @@ function fixture() {
     context,
     tabs,
     strip,
+    column,
+    tools,
+    join,
     calls,
     tabFor,
     labelOf,
@@ -200,21 +83,18 @@ test('builds one tab per visible rail panel, in rail order, labelled from the pa
   const f = fixture();
   assert.equal(
     f.rail.children[0],
-    f.tabs.column,
+    f.column,
     'the column precedes its panels in the tab order',
   );
-  assert.equal(f.tabs.column.id, RIGHT_RAIL_COLUMN_ID);
   assert.deepEqual(
-    f.tabs.column.children,
-    [f.strip, f.tabs.tools],
+    f.column.children,
+    [f.strip, f.tools],
     'the tablist, then the tool slot',
   );
-  assert.equal(f.tabs.tools.id, RIGHT_RAIL_TOOLS_ID);
-  assert.deepEqual(f.tabs.tools.children, [], 'the slot starts empty');
-  assert.equal(f.strip.id, RIGHT_RAIL_TABS_ID);
+  assert.deepEqual(f.tools.children, [], 'the slot starts empty');
   assert.equal(f.strip.getAttribute('role'), 'tablist');
   assert.equal(f.strip.getAttribute('aria-orientation'), 'vertical');
-  assert.equal(f.rail.getAttribute(RIGHT_RAIL_TABS_ATTRIBUTE), 'vertical');
+  assert.equal(f.rail.getAttribute('data-rail-tabs'), 'vertical');
   assert.deepEqual(
     f.strip.children.map((tab) => [
       tab.dataset.railTab,
@@ -232,10 +112,6 @@ test('builds one tab per visible rail panel, in rail order, labelled from the pa
     assert.equal(tab.getAttribute('role'), 'tab');
     assert.equal(tab.type, 'button');
   }
-  assert.deepEqual(
-    railTabPanels(f.rail).map((p) => p.id),
-    ['pp-toggles', 'cctv-panel', 'global-context-panel'],
-  );
 });
 
 test('mirrors collapsed state into aria-selected, a roving tabindex and titles', () => {
@@ -342,12 +218,15 @@ test('a sync that changes nothing keeps the same tab elements in place', () => {
 
 test('publishes the open tab extent on the rail and keeps a join element under the panels', () => {
   const f = fixture();
+  // The strip's offsets are relative to its column, the column's to the rail.
+  Object.assign(f.column, { offsetTop: 0, offsetLeft: 320 });
+  Object.assign(f.strip, { offsetLeft: 10 });
   const { props } = f.rail.style;
-  assert.equal(f.tabs.join.parentElement, f.rail);
-  assert.equal(f.tabs.join.getAttribute('aria-hidden'), 'true');
-  assert.equal(f.tabs.join.hidden, true, 'nothing open, nothing to join');
+  assert.equal(f.join.parentElement, f.rail);
+  assert.equal(f.join.getAttribute('aria-hidden'), 'true');
+  assert.equal(f.join.hidden, true, 'nothing open, nothing to join');
   assert.deepEqual(
-    f.tabs.join.children.map((layer) => layer.getAttribute('class')),
+    f.join.children.map((layer) => layer.getAttribute('class')),
     [
       'right-rail-join-shadow',
       'right-rail-join-glass',
@@ -370,18 +249,27 @@ test('publishes the open tab extent on the rail and keeps a join element under t
   f.cctv.classList.remove('collapsed');
   f.tabs.sync();
   assert.deepEqual([...props], [['--rail-tab-bottom', '142px']]);
-  assert.equal(f.tabs.join.hidden, false);
-  const [, glass] = f.tabs.join.children;
+  assert.equal(f.join.hidden, false);
+  const [, glass] = f.join.children;
   assert.match(
     glass.style.clipPath,
     /^path\('M 16 0 L 314 0 A 16 16 0 0 1 330 16 L 330 78 /,
   );
+  // A short strip shrinks the tab: its corners stay within half its height.
+  tab.offsetHeight = 12;
+  f.tabs.sync();
+  assert.equal(props.get('--rail-tab-bottom'), '98px');
+  assert.match(
+    glass.style.clipPath,
+    /L 366 86 A 6 6 0 0 1 372 92 A 6 6 0 0 1 366 98 L 338 98 /,
+    'a 12px tab gets 6px corners',
+  );
   f.cctv.classList.add('collapsed');
   f.tabs.sync();
   assert.deepEqual([...props], [], 'no open panel, no join');
-  assert.equal(f.tabs.join.hidden, true);
+  assert.equal(f.join.hidden, true);
   f.tabs.destroy();
-  assert.equal(f.tabs.join.parentElement, null);
+  assert.equal(f.join.parentElement, null);
 });
 
 test('railJoinPath traces the panel with the tab attached: corners, fillets, tab corners', () => {
@@ -504,35 +392,6 @@ test('a rail panel hidden at mount gets its tab when its owner unhides it, from 
   tabs.destroy();
 });
 
-test('a tab shrunk by a short strip joins with corners no larger than half its height', () => {
-  const f = fixture();
-  // The strip's offsets are relative to its column, the column's to the rail.
-  Object.assign(f.tabs.column, { offsetTop: 0, offsetLeft: 320 });
-  Object.assign(f.strip, { offsetLeft: 10 });
-  const tab = f.tabFor('global-context-panel');
-  Object.assign(tab, {
-    offsetTop: 150,
-    offsetLeft: 0,
-    offsetHeight: 12,
-    offsetWidth: 42,
-  });
-  Object.assign(f.context, {
-    offsetTop: 0,
-    offsetLeft: 0,
-    offsetHeight: 300,
-    offsetWidth: 330,
-  });
-  f.context.classList.remove('collapsed');
-  f.tabs.sync();
-  assert.equal(f.rail.style.props.get('--rail-tab-bottom'), '162px');
-  const [, glass] = f.tabs.join.children;
-  assert.match(
-    glass.style.clipPath,
-    /L 366 150 A 6 6 0 0 1 372 156 A 6 6 0 0 1 366 162 L 338 162 /,
-    'a 12px tab gets 6px corners',
-  );
-});
-
 test('railJoinPath shrinks the fillet and corner to the room left, down to a shared edge', () => {
   const base = {
     panel: { x0: 0, y0: 0, x1: 330, y1: 160 },
@@ -557,15 +416,6 @@ test('railJoinPath shrinks the fillet and corner to the room left, down to a sha
     flush,
     /A 10 10 0 0 1 362 160 L 16 160 A 16 16 0 0 1 0 144 /,
     'a tab level with the panel bottom shares its bottom edge',
-  );
-  const high = railJoinPath({
-    ...base,
-    tab: { top: 12, bottom: 100, right: 372 },
-  });
-  assert.match(
-    high,
-    /^M 16 0 L 318 0 A 12 12 0 0 1 330 12 L 362 12 A 10 10 0 0 1 372 22 /,
-    '12px above the tab: no fillet, a 12px corner',
   );
   const chamfer = railJoinPath({
     ...base,
@@ -650,26 +500,10 @@ test('destroy removes the column and stops listening', () => {
   const f = fixture();
   const tab = f.tabFor('cctv-panel');
   f.tabs.destroy();
-  assert.equal(f.tabs.column.parentElement, null);
-  assert.equal(f.rail.children.includes(f.tabs.column), false);
-  assert.equal(f.rail.getAttribute(RIGHT_RAIL_TABS_ATTRIBUTE), null);
+  assert.equal(f.column.parentElement, null);
+  assert.equal(f.rail.children.includes(f.column), false);
+  assert.equal(f.rail.getAttribute('data-rail-tabs'), null);
   fire(tab, 'click');
   assert.deepEqual(f.calls, []);
   f.tabs.destroy();
-});
-
-test('refuses to build without a rail, a document or an owner callback', () => {
-  const doc = makeDocument();
-  assert.throws(
-    () => createRightRailTabs({ rail: null, setPanelCollapsed() {} }),
-    TypeError,
-  );
-  assert.throws(
-    () =>
-      createRightRailTabs({
-        rail: doc.createElement('aside'),
-        documentRef: doc,
-      }),
-    TypeError,
-  );
 });

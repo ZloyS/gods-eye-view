@@ -7,7 +7,7 @@ import { shouldExpandGlobalContextPanel } from './rightRailPolicy.js';
 test('the desktop right rail hides collapsed panels behind the tab strip and marks them aria-hidden', () => {
   const ui = readFileSync(new URL('./ui/rightPanelRail.js', import.meta.url), 'utf8');
   const css = readStylesheet(new URL('../style.css', import.meta.url));
-  assert.match(ui, /const isMobile = windowRef\.matchMedia\('\(max-width: 720px\)'\)\.matches/);
+  assert.match(ui, /const isMobile = windowRef\.matchMedia\(MOBILE_SHELL_MEDIA_QUERY\)\.matches/);
   assert.match(ui, /const exclusive = !isMobile;/);
   assert.match(ui, /if \(exclusive && panel\.classList\.contains\('collapsed'\)\)\s*panel\.setAttribute\('aria-hidden', 'true'\)/);
   assert.match(css, /#right-context-rail\.layout-exclusive > \[data-panel-id\]\.collapsed \{/);
