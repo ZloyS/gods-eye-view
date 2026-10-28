@@ -115,18 +115,14 @@ export class StyleManager extends ShellFacade {
     this._panelChrome = new PanelChrome({
       elements: {
         _contextRadioDetailsBtn: this._contextRadioDetailsBtn,
-        _contextRadioDock: this._contextRadioDock,
         _leftPanelStack: this._leftPanelStack,
         _locationSearch: this._locationSearch,
         _ppToggles: this._ppToggles,
         _rightPanelStack: this._rightPanelStack,
       },
       operations: {
-        _setRadioDisclosure: (...args) => this._setRadioDisclosure(...args),
         _syncCctvPanelViewport: (...args) =>
           this._syncCctvPanelViewport(...args),
-        _syncContextRadioLauncherState: (...args) =>
-          this._syncContextRadioLauncherState(...args),
         _showToast: (...args) => this._showToast(...args),
       },
       readHud: () => this.hud,

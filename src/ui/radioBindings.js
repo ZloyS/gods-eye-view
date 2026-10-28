@@ -410,17 +410,6 @@ export function bindRadioControls() {
     () => void toggleRadio(this._cockpitRadioEnableBtn),
   );
   this.listen(this._contextRadioToggleBtn, 'click', () => {
-    const contextPanel = document.getElementById('global-context-panel');
-    if (contextPanel && !contextPanel.classList.contains('collapsed')) {
-      setRadioDisclosure(false);
-      this.actions.setPanelCollapsed('radio-panel', false, { explicit: true });
-      void this._revealRadioPanelInsideContext({
-        focusTarget: this._radioPanel?.querySelector(
-          '[data-collapse-target="radio-panel"]',
-        ),
-      });
-      return;
-    }
     setRadioDisclosure(
       !this._contextRadioDock?.classList.contains('disclosure-open'),
     );

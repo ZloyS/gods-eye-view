@@ -30,7 +30,9 @@ function settledLeftRailTop(leftStack, viewportHeight, getComputedStyle) {
  * The caller owns scheduling, obstacle selection, disclosure preferences and
  * persistence. The rail presents its panels as vertical tabs
  * (rightRailTabs.js): one owner stays expanded, its peers are
- * presentation-collapsed and hidden, and the owner takes the whole lane.
+ * presentation-collapsed and hidden, and the owner takes the whole lane. The
+ * lane's top follows the left rail's, lifted toward the HUD above when the tab
+ * strip's column (rightRailTabs.js) is taller than the lane.
  * @param {object} options Live DOM and caller policy.
  * @param {HTMLElement} options.stack Rail element.
  * @param {Iterable<HTMLElement>} options.obstacles Caller-selected obstacle nodes.
@@ -172,6 +174,10 @@ export function layoutRightPanelRail({
     .map((node) => [node, node.scrollTop || 0])
     .filter(([, top]) => top > 0);
   const naturalHeights = new Map();
+  // The tab strip's column stands beside the panels at its own height; the
+  // measuring override lifts its lane clamp too.
+  const column = stack.querySelector?.(':scope > #right-rail-column');
+  let columnHeight = 0;
   // Remove live height allocations through a synchronous CSS override. Keeping
   // the stored properties intact avoids REMOVE/SET churn on unchanged panels.
   // Do not toggle layout classes here: the class observer schedules new passes.
@@ -187,6 +193,7 @@ export function layoutRightPanelRail({
         ),
       );
     }
+    columnHeight = column?.getBoundingClientRect().height || 0;
   } finally {
     stack.removeAttribute('data-rail-measuring');
     for (const [node, top] of scrollers)
@@ -199,18 +206,25 @@ export function layoutRightPanelRail({
       0,
     ) +
     gap * Math.max(0, visiblePanels.length - 1);
-  const layout = resolveHudRailLayout({
-    viewportHeight,
-    panelHeight: naturalHeight,
-    laneLeft: stackRect.left,
-    laneRight: stackRect.right,
-    obstacles: obstacleRects,
-    baseTop: alignedTop,
-    baseBottom: viewportHeight * 0.96,
-    gap: safeGap,
-    align: 'start',
-  });
+  const resolve = (baseTop) =>
+    resolveHudRailLayout({
+      viewportHeight,
+      panelHeight: naturalHeight,
+      laneLeft: stackRect.left,
+      laneRight: stackRect.right,
+      obstacles: obstacleRects,
+      baseTop,
+      baseBottom: viewportHeight * 0.96,
+      gap: safeGap,
+      align: 'start',
+    });
+  let layout = resolve(alignedTop);
   if (!layout) return;
+  // A lane too short for the strip's column: the rail climbs toward the HUD
+  // above, as far as the strip needs and the obstacles allow. A lane still
+  // shorter scrolls the strip (rightRailTabs.js).
+  const shortfall = columnHeight - (layout.safeBottom - layout.safeTop);
+  if (shortfall > 0) layout = resolve(alignedTop - shortfall) || layout;
   const { safeTop, safeBottom, maxHeight: availableHeight } = layout;
   const stabilityBand = Math.max(48, viewportHeight * 0.06);
   const wasFocused = stack.classList.contains('layout-focus');

@@ -375,6 +375,35 @@ test('right rail aligns to the current left rail and excludes hidden obstacles',
   assert.equal(f.stack.dataset.safeTop, '200.0');
 });
 
+test('right rail climbs above the left rail baseline when its tab strip needs the room, no further than the HUD above', () => {
+  const f = fixture('right');
+  f.options.leftStack.rect.top = 300;
+  const above = element('above', { left: 1100, top: 100, height: 50 });
+  const below = element('below', { left: 1100, top: 600, height: 50 });
+  f.options.obstacles = [above, below];
+  const column = element('column', { height: 380 });
+  f.stack.querySelector = (selector) =>
+    selector.includes('#right-rail-column') ? column : null;
+  // The gap is 10.8 at 900px: the lane 300..589.2 is 90.8 short of the column.
+  f.run();
+  assert.equal(f.stack.dataset.safeTop, '209.2');
+  assert.equal(f.stack.dataset.safeBottom, '589.2');
+  column.rect.height = 600;
+  f.run();
+  assert.equal(
+    f.stack.dataset.safeTop,
+    '160.8',
+    'the HUD corner above stops the climb',
+  );
+  column.rect.height = 200;
+  f.run();
+  assert.equal(
+    f.stack.dataset.safeTop,
+    '300.0',
+    'a column that fits leaves the baseline alone',
+  );
+});
+
 // The left rail's `top` animates after the right pass runs, and nothing
 // re-runs it when the transition lands: the right rail must read the end value.
 function animatingLeftRail({ keyframes = true } = {}) {

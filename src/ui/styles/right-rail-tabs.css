@@ -2,7 +2,9 @@
    A sideways tab strip (rightRailTabs.js) hugs the rail's right edge and the
    open panel sits beside it. Panels keep their `collapsed` state; the rail's
    exclusive layout (rightPanelRail.js) hides the collapsed ones, so the strip
-   is the only launcher. Phones keep the sheet shell (mobile-shell.css).
+   is the only launcher. The compact Radio launcher, which rides in Context's
+   header, moves to a slot under the tabs so it survives a collapsed Context.
+   Phones keep the sheet shell (mobile-shell.css).
 
    The open tab and its panel are one surface. The strip builds a join element
    (.right-rail-join) under the panels: one path traces the panel with the tab
@@ -28,10 +30,14 @@
   --right-rail-fillet: 8px;
   --right-rail-join-style: round;
   --right-rail-join-shadow: 0 8px 32px rgba(0, 0, 0, 0.5);
-  /* Lower fillet, a short straight run, then the panel's corner. */
-  --right-rail-panel-cover: calc(
-    var(--rail-tab-bottom, 0px) + var(--right-rail-fillet) + 4px +
-      var(--right-rail-corner)
+  /* Lower fillet, a short straight run, then the panel's corner, within the
+     rail's lane. */
+  --right-rail-panel-cover: min(
+    calc(
+      var(--rail-tab-bottom, 0px) + var(--right-rail-fillet) + 4px +
+        var(--right-rail-corner)
+    ),
+    var(--right-stack-max-height, 70vh)
   );
   /* The theme's rail width stays the panel width; the strip's column is
      padding beside it. */
@@ -39,26 +45,131 @@
   padding-right: var(--right-rail-tabs-inset);
 }
 
-#right-rail-tabs {
+/* Just above the phone breakpoint the strip's column would push the rail into
+   the left rail: fold it into the panel width instead. */
+@media (min-width: 721px) and (max-width: 760px) {
+  #right-context-rail[data-rail-tabs] {
+    width: calc(330px - var(--right-rail-tabs-inset));
+  }
+
+  :root[data-ui-theme='cyber'] #right-context-rail[data-rail-tabs] {
+    width: calc(312px - var(--right-rail-tabs-inset));
+  }
+}
+
+/* The strip's column: the tablist, then a tool slot that holds the compact
+   Radio launcher on desktop (radioPanelPlacement.js). */
+#right-rail-column {
   position: absolute;
   top: 0;
   right: 0;
   z-index: 120;
   display: flex;
   flex-direction: column;
-  gap: 6px;
   box-sizing: border-box;
   width: var(--right-rail-tabs-inset);
   max-height: var(--right-stack-max-height, 70vh);
-  /* Room for the open tab's bridge on the left. */
-  padding-left: var(--right-rail-tabs-gap);
-  overflow: hidden auto;
-  scrollbar-width: none;
   pointer-events: auto;
 }
 
-#right-rail-tabs::-webkit-scrollbar {
+/* The layout pass reads the column's natural height with the lane clamp
+   lifted, to climb when the lane is too short for it (rightPanelRail.js). */
+#right-context-rail[data-rail-measuring] > #right-rail-column {
+  max-height: none !important;
+}
+
+#right-rail-tabs {
+  position: relative;
+  display: flex;
+  flex: 0 1 auto;
+  flex-direction: column;
+  gap: 4px;
+  box-sizing: border-box;
+  min-height: 0;
+  /* Room for the open tab's bridge on the left. */
+  padding-left: var(--right-rail-tabs-gap);
+  overflow: hidden auto;
+  /* The rail climbs above its baseline to fit the column (rightPanelRail.js);
+     a lane still shorter overflows the strip: a thin scrollbar says there is
+     more, and the strip keeps the open tab in view (rightRailTabs.js). */
+  scrollbar-width: thin;
+  scrollbar-color: rgba(255, 255, 255, 0.22) transparent;
+}
+
+#right-rail-tools {
+  display: flex;
+  flex: 0 0 auto;
+  flex-direction: column;
+  gap: 6px;
+  box-sizing: border-box;
+  margin-top: 6px;
+  padding-left: var(--right-rail-tabs-gap);
+}
+
+#right-rail-tools:empty {
   display: none;
+}
+
+/* In the slot the launcher is one more label in the column: no card, the
+   tab's corner, the accent while the radio plays. Its popover opens to the
+   left over the panel, bottom-aligned so it stays inside the lane. */
+#right-rail-tools .context-radio-dock {
+  width: var(--right-rail-tabs-width);
+}
+
+#right-rail-tools .context-radio-toggle {
+  width: var(--right-rail-tabs-width);
+  height: var(--right-rail-tabs-width);
+  border: 0;
+  border-radius: var(--right-rail-tab-radius);
+  color: var(--text-dim);
+  background: transparent;
+  box-shadow: none;
+}
+
+#right-rail-tools .context-radio-toggle .material-symbols-outlined {
+  color: inherit;
+  font-size: 19px;
+}
+
+#right-rail-tools .context-radio-toggle:hover,
+#right-rail-tools .context-radio-toggle[aria-expanded='true'] {
+  color: var(--text-primary);
+  background: rgba(255, 255, 255, 0.06);
+}
+
+#right-rail-tools .context-radio-toggle:focus-visible {
+  outline-offset: -3px;
+}
+
+#right-rail-tools .context-radio-toggle.active {
+  color: var(--accent);
+}
+
+#right-rail-tools .context-radio-mini {
+  top: auto;
+  right: calc(100% + var(--right-rail-tabs-gap) + 6px);
+  bottom: 0;
+}
+
+/* The tabs open and close the rail's panels; the headers' own collapse
+   buttons would only duplicate them. Phones keep the sheet shell's buttons. */
+body:not(.mobile-shell)
+  #right-context-rail[data-rail-tabs]
+  :is(
+    [data-collapse-target='pp-toggles'],
+    [data-collapse-target='cctv-panel'],
+    [data-collapse-target='street-level-panel'],
+    [data-collapse-target='global-context-panel'],
+    [data-collapse-target='weather-panel'],
+    [data-collapse-target='recent-imagery-panel']
+  ) {
+  display: none;
+}
+
+/* The strip clips overflow, so the focus ring draws inside the tab. */
+#right-rail-tabs > .right-rail-tab:focus-visible {
+  outline-offset: -3px;
 }
 
 .right-rail-tab {
@@ -69,8 +180,8 @@
   justify-content: center;
   box-sizing: border-box;
   width: var(--right-rail-tabs-width);
-  min-height: 56px;
-  padding: 12px 0;
+  min-height: 40px;
+  padding: 6px 0;
   border: 0;
   border-radius: var(--right-rail-tab-radius);
   background: transparent;
@@ -78,7 +189,7 @@
   font-family: var(--font-mono);
   font-size: 9px;
   line-height: 1;
-  letter-spacing: 2.2px;
+  letter-spacing: 1.6px;
   text-transform: uppercase;
   text-shadow: 0 1px 2px rgba(0, 0, 0, 0.7);
   cursor: pointer;
@@ -108,6 +219,23 @@
   border-radius: 0 var(--right-rail-tab-radius) var(--right-rail-tab-radius) 0;
   color: var(--accent);
   text-shadow: none;
+}
+
+/* Short windows: tighter tabs before the strip has to scroll. */
+@media (max-height: 720px) {
+  #right-rail-tabs {
+    gap: 3px;
+  }
+
+  .right-rail-tab {
+    min-height: 36px;
+    padding: 4px 0;
+    letter-spacing: 1.3px;
+  }
+
+  #right-rail-tools {
+    margin-top: 4px;
+  }
 }
 
 /* ── The join: surface, outline and shadow of panel plus tab ──────────── */
@@ -195,12 +323,9 @@ body:not(.mobile-shell)
   opacity: 0.08;
 }
 
-/* The panel reaches at least to its tab's lower fillet and corner. The
-   wrapper carries the floor for the rail's allocated (focus) heights and the
-   card for its natural height. */
-body:not(.mobile-shell)
-  #right-context-rail[data-rail-tabs]
-  > [data-panel-id]:not(.collapsed),
+/* The card reaches at least to its tab's lower fillet and corner. In the
+   focus layout the rail's allocation bounds the wrapper; the card's floor is
+   what the measuring pass sees. */
 body:not(.mobile-shell)
   #right-context-rail[data-rail-tabs]
   > [data-panel-id]:not(.collapsed)
@@ -246,6 +371,17 @@ body:not(.mobile-shell)
   color: var(--cyber-red-bright);
 }
 
+:root[data-ui-theme='cyber'] #right-rail-tools .context-radio-toggle:hover,
+:root[data-ui-theme='cyber']
+  #right-rail-tools
+  .context-radio-toggle[aria-expanded='true'] {
+  background-color: rgba(226, 235, 236, 0.08);
+}
+
+:root[data-ui-theme='cyber'] #right-rail-tools .context-radio-toggle.active {
+  color: var(--cyber-red-bright);
+}
+
 /* Cyber gives every .panel-collapsible wrapper a surface with an inset ring
    (cyber.css); beside the open tab that ring would show as a line. */
 :root[data-ui-theme='cyber']
@@ -264,10 +400,13 @@ body:not(.mobile-shell)
 }
 
 /* ── Phones keep the sheet shell ───────────────────────────────────────── */
+/* The content-box rail is a desktop measure; sheets size their box as before. */
 body.mobile-shell #right-context-rail {
+  box-sizing: border-box;
   padding-right: 0;
 }
 
-body.mobile-shell #right-context-rail > #right-rail-tabs {
+/* The launcher is back in Context's header there (radioPanelPlacement.js). */
+body.mobile-shell #right-context-rail > #right-rail-column {
   display: none;
 }

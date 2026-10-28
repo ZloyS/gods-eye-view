@@ -41,6 +41,21 @@ function fixture(theme = 'cyber') {
   };
 }
 
+test('any live opening of a rail panel makes it the preferred owner; restores do not', () => {
+  const f = fixture('tactical'), prior = globalThis.document;
+  globalThis.document = f.doc;
+  try {
+    f.owner.setPanelCollapsed('cctv-panel', false, {});
+    assert.equal(f.owner._panelLayout._rightStackPreferredPanelId, 'cctv-panel', 'a camera click opens CCTV without the explicit flag');
+    assert.equal(f.display.classList.contains('collapsed'), true, 'peers are left to the rail pass, not persisted');
+    f.owner.setPanelCollapsed('radio-panel', false, {});
+    assert.equal(f.owner._panelLayout._rightStackPreferredPanelId, 'global-context-panel', 'a radio pick owns the rail through Context');
+    f.owner.setPanelCollapsed('cctv-panel', true, { explicit: true });
+    f.owner.setPanelCollapsed('cctv-panel', false, { restore: true, persist: false });
+    assert.equal(f.owner._panelLayout._rightStackPreferredPanelId, 'global-context-panel', 'a restore never claims ownership');
+  } finally { globalThis.document = prior; }
+});
+
 test('explicit Cyber opening collapses peers and claims their restoration lanes', () => {
   const f = fixture(), prior = globalThis.document;
   globalThis.document = f.doc;

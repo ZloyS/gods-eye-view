@@ -202,8 +202,8 @@ test('share-panel state excludes responsive collapse and preserves recipient pre
 
   assert.match(
     ui,
-    /const collapsed =[\s\S]*?panelEl\.classList\.contains\('layout-auto-collapsed'\)[\s\S]*?panelEl\.classList\.contains\('rail-owner-collapsed'\)[\s\S]*?\? false\s*: panelEl\.classList\.contains\('collapsed'\);/,
-    'responsive auto-collapse must serialize the explicit expanded preference',
+    /const collapsed = panelEl\.classList\.contains\('layout-auto-collapsed'\)\s*\? false\s*: panelEl\.classList\.contains\('collapsed'\);/,
+    'the left rail\'s responsive auto-collapse serializes the expanded preference; a right-rail peer hidden behind the owner travels as collapsed',
   );
   assert.match(
     ui,

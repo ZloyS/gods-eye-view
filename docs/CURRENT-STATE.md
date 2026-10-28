@@ -1478,14 +1478,16 @@ The left rail's automatic collapse remains presentation only and prioritizes
 the latest explicit panel. The right rail keeps one expanded owner (the latest
 explicit panel, else the focused one, else one with a stored or shared choice
 over one open only by default, else the first) and presentation-collapses its
-peers with `rail-owner-collapsed`, which share links and the phone shell read
-as "expanded". Mobile layout still releases desktop allocation styles and gives
-every owner-collapsed panel back. Stable Display allocation avoids unnecessary
-style writes.
-Context expansion through the panel owner or adaptive right-rail restoration
-closes an open compact Radio disclosure before Context/Space Missions becomes
-visible. The mini remains available while Context is collapsed. This fixes the
-Radio-overlap path reported in #804 without changing z-index or layout policy.
+peers with `rail-owner-collapsed`, which the phone shell reads as "expanded"
+and a share link carries as collapsed, so a recipient opens the panel the
+sender sees. Any live opening of a rail panel, with or without the explicit
+flag (a camera click, Street Level switching on, a radio pick), makes that
+panel the owner. Mobile layout still releases desktop allocation styles and
+gives every owner-collapsed panel back. Stable Display allocation avoids
+unnecessary style writes.
+The compact Radio player is independent of Context: its launcher toggles it
+whether Context is collapsed or open, and only an outside pointer, Escape, its
+close button or its Details button closes it, never a layout pass.
 The right rail skips panels hidden by other CSS (computed `display: none`), but
 keeps the collapsed panels its own exclusive presentation hides, so the owner
 rule can still give them back.
@@ -1500,11 +1502,22 @@ panels hidden in every HUD layout. A tab toggles its panel through
 `setPanelCollapsed` with the explicit flag, so opening one collapses the others
 and saved preferences, share links and the Context/Radio ownership rules are
 unchanged; the panels' `collapsed` classes remain the only state, mirrored
-through a MutationObserver. The strip is a vertical `role="tablist"`: Up/Down
+through a MutationObserver. On desktop the panels' own header collapse
+buttons are hidden: the tab is the one control, Escape its keyboard twin.
+The strip is a vertical `role="tablist"`: Up/Down
 wrap, Home/End jump, the open tab (else the first) is the tab stop, Escape
 inside a panel returns focus to its tab, and the strip precedes the panels in
-the DOM so Tab from the open tab enters the panel. Labels are the panels' own
-translated header titles. The strip marks the rail with `data-rail-tabs`, which
+the DOM so Tab from the open tab reaches the tool slot and then the panel.
+Labels are the panels' own translated header titles. The rail's lane shares
+the left rail's top; when it is too short for the strip, the rail climbs toward
+the HUD corner above as far as the strip needs (`src/ui/rightPanelRail.js`),
+and only a lane still shorter scrolls the strip, with a thin scrollbar and the
+open tab kept in view. Under the tabs the strip's
+column keeps a tool slot (`#right-rail-tools`) that holds the compact Radio
+launcher on desktop: `src/ui/radioPanelPlacement.js` moves it there from
+Context's header, and back for the phone sheet, so the compact player stays one
+click away; the player's Details button opens the Radio section inside Context.
+The strip marks the rail with `data-rail-tabs`, which
 the stylesheet keys the strip's column on; a rail without the strip keeps its
 plain geometry. Phones hide the strip and keep the sheet shell; Cockpit hides
 the rail and the strip with it.

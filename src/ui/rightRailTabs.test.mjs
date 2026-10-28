@@ -1,8 +1,11 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
+import { readStylesheet } from '../testSupport/readStylesheet.mjs';
 import {
+  RIGHT_RAIL_COLUMN_ID,
   RIGHT_RAIL_TABS_ATTRIBUTE,
   RIGHT_RAIL_TABS_ID,
+  RIGHT_RAIL_TOOLS_ID,
   createRightRailTabs,
   nextRailTabIndex,
   railJoinPath,
@@ -197,11 +200,24 @@ test('builds one tab per visible rail panel, in rail order, labelled from the pa
   const f = fixture();
   assert.equal(
     f.rail.children[0],
-    f.strip,
-    'the tablist precedes its panels in the tab order',
+    f.tabs.column,
+    'the column precedes its panels in the tab order',
   );
+  assert.equal(f.tabs.column.id, RIGHT_RAIL_COLUMN_ID);
+  assert.deepEqual(
+    f.tabs.column.children,
+    [f.strip, f.tabs.tools],
+    'the tablist, then the tool slot',
+  );
+  assert.equal(f.tabs.tools.id, RIGHT_RAIL_TOOLS_ID);
+  assert.deepEqual(f.tabs.tools.children, [], 'the slot starts empty');
   assert.equal(f.strip.id, RIGHT_RAIL_TABS_ID);
   assert.equal(f.strip.getAttribute('role'), 'tablist');
+  assert.equal(
+    f.strip.getAttribute('data-rail-scroller'),
+    '',
+    'the rail layout pass keeps the strip scroll offset across measuring',
+  );
   assert.equal(f.strip.getAttribute('aria-orientation'), 'vertical');
   assert.equal(f.rail.getAttribute(RIGHT_RAIL_TABS_ATTRIBUTE), 'vertical');
   assert.deepEqual(
@@ -425,12 +441,246 @@ test('railJoinPath traces the panel with the tab attached: corners, fillets, tab
   );
 });
 
-test('destroy removes the strip and stops listening', () => {
+/** A browser-like MutationObserver over the fake tree. */
+function installObservers(doc) {
+  const live = [];
+  class FakeMutationObserver {
+    constructor(callback) {
+      this.callback = callback;
+      this.targets = [];
+      live.push(this);
+    }
+    observe(target, options) {
+      this.targets.push({ target, options });
+    }
+    disconnect() {
+      this.targets = [];
+    }
+  }
+  doc.defaultView = { MutationObserver: FakeMutationObserver };
+  return {
+    attributeChanged(target, name) {
+      for (const observer of live) {
+        const hit = observer.targets.some(
+          ({ target: observed, options }) =>
+            observed === target &&
+            options.attributes &&
+            (!options.attributeFilter ||
+              options.attributeFilter.includes(name)),
+        );
+        if (hit)
+          observer.callback([
+            { type: 'attributes', target, attributeName: name },
+          ]);
+      }
+    },
+  };
+}
+
+test('a rail panel hidden at mount gets its tab when its owner unhides it, from the observers alone', () => {
+  const doc = makeDocument();
+  const { attributeChanged } = installObservers(doc);
+  const rail = doc.createElement('aside');
+  rail.id = 'right-context-rail';
+  const display = panel(doc, 'pp-toggles', {
+    title: 'DISPLAY',
+    titleClass: 'pp-header-label',
+    collapsed: false,
+  });
+  const cctv = panel(doc, 'cctv-panel', { title: 'CCTV' });
+  const recent = panel(doc, 'recent-imagery-panel', {
+    title: 'RECENT IMAGERY',
+    hidden: true,
+  });
+  const context = panel(doc, 'global-context-panel', { title: 'CONTEXT' });
+  rail.append(display, cctv, recent, context);
+  doc.body.append(rail);
+  const tabs = createRightRailTabs({
+    rail,
+    documentRef: doc,
+    setPanelCollapsed() {},
+  });
+  const ids = () => tabs.element.children.map((tab) => tab.dataset.railTab);
+  assert.deepEqual(ids(), ['pp-toggles', 'cctv-panel', 'global-context-panel']);
+  // Recent Imagery's layer turns on: its owner removes `hidden`, then the
+  // rail pass marks it collapsed behind the Display owner.
+  recent.hidden = false;
+  attributeChanged(recent, 'hidden');
+  recent.classList.add('rail-owner-collapsed');
+  attributeChanged(recent, 'class');
+  assert.deepEqual(ids(), [
+    'pp-toggles',
+    'cctv-panel',
+    'recent-imagery-panel',
+    'global-context-panel',
+  ]);
+  tabs.destroy();
+});
+
+test('a newly opened tab is scrolled into the strip window once; the join follows the visible part', () => {
+  const f = fixture();
+  // The strip's offsets are relative to its column, the column's to the rail.
+  Object.assign(f.tabs.column, { offsetTop: 0, offsetLeft: 320 });
+  Object.assign(f.strip, { clientHeight: 100, scrollTop: 0, offsetLeft: 10 });
+  const tab = f.tabFor('global-context-panel');
+  Object.assign(tab, {
+    offsetTop: 150,
+    offsetLeft: 0,
+    offsetHeight: 56,
+    offsetWidth: 42,
+  });
+  Object.assign(f.context, {
+    offsetTop: 0,
+    offsetLeft: 0,
+    offsetHeight: 300,
+    offsetWidth: 330,
+  });
+  f.context.classList.remove('collapsed');
+  f.tabs.sync();
+  assert.equal(
+    f.strip.scrollTop,
+    106,
+    'opened: scrolled so the tab bottom meets the window',
+  );
+  assert.equal(f.rail.style.props.get('--rail-tab-bottom'), '100px');
+  const [, glass] = f.tabs.join.children;
+  f.strip.scrollTop = 220;
+  f.tabs.sync();
+  assert.equal(
+    f.strip.scrollTop,
+    220,
+    'a sync after the user scrolled leaves the strip alone',
+  );
+  assert.equal(
+    glass.style.clipPath,
+    "path('M 16 0 L 314 0 A 16 16 0 0 1 330 16 L 330 284 A 16 16 0 0 1 314 300 L 16 300 A 16 16 0 0 1 0 284 L 0 16 A 16 16 0 0 1 16 0 Z')",
+    'the tab is out of view: the join is the panel alone',
+  );
+  f.strip.scrollTop = 190;
+  f.tabs.sync();
+  assert.match(
+    glass.style.clipPath,
+    /^path\('M 16 0 L 364 0 A 8 8 0 0 1 372 8 A 8 8 0 0 1 364 16 L 338 16 A 8 8 0 0 0 330 24 L 330 284 /,
+    'a tab half in view joins with the visible 16px and smaller corners',
+  );
+  const cctvTab = f.tabFor('cctv-panel');
+  Object.assign(cctvTab, {
+    offsetTop: 86,
+    offsetLeft: 0,
+    offsetHeight: 56,
+    offsetWidth: 42,
+  });
+  Object.assign(f.cctv, {
+    offsetTop: 0,
+    offsetLeft: 0,
+    offsetHeight: 300,
+    offsetWidth: 330,
+  });
+  f.context.classList.add('collapsed');
+  f.cctv.classList.remove('collapsed');
+  f.tabs.sync();
+  assert.equal(f.strip.scrollTop, 86, 'another tab opens: brought into view');
+});
+
+test('railJoinPath shrinks the fillet and corner to the room left, down to a shared edge', () => {
+  const base = {
+    panel: { x0: 0, y0: 0, x1: 330, y1: 160 },
+    corner: 16,
+    tabRadius: 10,
+    fillet: 8,
+  };
+  const tight = railJoinPath({
+    ...base,
+    tab: { top: 60, bottom: 148, right: 372 },
+  });
+  assert.match(
+    tight,
+    /A 10 10 0 0 1 362 148 L 330 148 A 12 12 0 0 1 318 160 L 16 160 /,
+    '12px below the tab: no fillet, a 12px corner',
+  );
+  const flush = railJoinPath({
+    ...base,
+    tab: { top: 60, bottom: 160, right: 372 },
+  });
+  assert.match(
+    flush,
+    /A 10 10 0 0 1 362 160 L 16 160 A 16 16 0 0 1 0 144 /,
+    'a tab level with the panel bottom shares its bottom edge',
+  );
+  const high = railJoinPath({
+    ...base,
+    tab: { top: 12, bottom: 100, right: 372 },
+  });
+  assert.match(
+    high,
+    /^M 16 0 L 318 0 A 12 12 0 0 1 330 12 L 362 12 A 10 10 0 0 1 372 22 /,
+    '12px above the tab: no fillet, a 12px corner',
+  );
+  const chamfer = railJoinPath({
+    ...base,
+    panel: { x0: 0, y0: 0, x1: 312, y1: 160 },
+    tab: { top: 4, bottom: 158, right: 372 },
+    corner: 10,
+    style: 'chamfer',
+  });
+  assert.match(
+    chamfer,
+    / L 312 10 L 372 10 L 372 150 L 312 150 L 312 150 L 302 160 /,
+    "Cyber keeps the tab's edges between the chamfers",
+  );
+});
+
+test('the stylesheet keeps phones on border-box, folds the strip into narrow desktops, shows a scrollbar and draws the focus ring inside', () => {
+  const css = readStylesheet(new URL('../../style.css', import.meta.url));
+  assert.match(
+    css,
+    /body\.mobile-shell #right-context-rail \{[^}]*box-sizing: border-box;/,
+  );
+  assert.match(
+    css,
+    /@media \(min-width: 721px\) and \(max-width: 760px\) \{\s*#right-context-rail\[data-rail-tabs\] \{\s*width: calc\(330px - var\(--right-rail-tabs-inset\)\);/,
+  );
+  assert.match(css, /#right-rail-tabs \{[^}]*scrollbar-width: thin;/);
+  assert.doesNotMatch(css, /#right-rail-tabs::-webkit-scrollbar/);
+  // The rail layout pass measures the column's natural height to climb above
+  // its baseline before the strip has to scroll.
+  assert.match(
+    css,
+    /#right-context-rail\[data-rail-measuring\] > #right-rail-column \{\s*max-height: none !important;/,
+  );
+  assert.match(
+    css,
+    /#right-rail-tabs > \.right-rail-tab:focus-visible \{\s*outline-offset: -3px;/,
+  );
+  assert.match(css, /--right-rail-panel-cover: min\(/);
+  // The column hides on phones, where the Radio launcher is back in Context's
+  // header; in the slot the launcher's popover opens upward and to the left.
+  assert.match(
+    css,
+    /body\.mobile-shell #right-context-rail > #right-rail-column \{\s*display: none;/,
+  );
+  assert.doesNotMatch(
+    css,
+    /body\.mobile-shell #right-context-rail > #right-rail-tabs/,
+  );
+  assert.match(
+    css,
+    /#right-rail-tools \.context-radio-mini \{\s*top: auto;\s*right: calc\(100% \+ var\(--right-rail-tabs-gap\) \+ 6px\);\s*bottom: 0;/,
+  );
+  assert.match(css, /#right-rail-tools:empty \{\s*display: none;/);
+  assert.match(
+    css,
+    /body:not\(\.mobile-shell\)\s*#right-context-rail\[data-rail-tabs\]\s*:is\(\s*\[data-collapse-target='pp-toggles'\],\s*\[data-collapse-target='cctv-panel'\],\s*\[data-collapse-target='street-level-panel'\],\s*\[data-collapse-target='global-context-panel'\],\s*\[data-collapse-target='weather-panel'\],\s*\[data-collapse-target='recent-imagery-panel'\]\s*\) \{\s*display: none;/,
+    'the rail panels own collapse buttons are hidden on desktop, the Radio section keeps its own',
+  );
+});
+
+test('destroy removes the column and stops listening', () => {
   const f = fixture();
   const tab = f.tabFor('cctv-panel');
   f.tabs.destroy();
-  assert.equal(f.strip.parentElement, null);
-  assert.equal(f.rail.children.includes(f.strip), false);
+  assert.equal(f.tabs.column.parentElement, null);
+  assert.equal(f.rail.children.includes(f.tabs.column), false);
   assert.equal(f.rail.getAttribute(RIGHT_RAIL_TABS_ATTRIBUTE), null);
   fire(tab, 'click');
   assert.deepEqual(f.calls, []);
