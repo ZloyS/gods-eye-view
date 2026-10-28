@@ -106,6 +106,18 @@ export class RadioControls {
       top: next,
       behavior: reducedMotion ? 'auto' : 'smooth',
     });
+    // A rail layout pass that measures the panels mid-scroll puts the scroll
+    // offset back where it was, which cancels the smooth scroll: land it when
+    // the scroll ends short.
+    if (!reducedMotion)
+      scroller.addEventListener(
+        'scrollend',
+        () => {
+          if (!this.destroyed && Math.abs(scroller.scrollTop - next) >= 1)
+            scroller.scrollTop = next;
+        },
+        { once: true },
+      );
     return true;
   }
 

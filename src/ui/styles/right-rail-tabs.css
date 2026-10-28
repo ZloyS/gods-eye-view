@@ -88,12 +88,9 @@
   min-height: 0;
   /* Room for the open tab's bridge on the left. */
   padding-left: var(--right-rail-tabs-gap);
-  overflow: hidden auto;
   /* The rail climbs above its baseline to fit the column (rightPanelRail.js);
-     a lane still shorter overflows the strip: a thin scrollbar says there is
-     more, and the strip keeps the open tab in view (rightRailTabs.js). */
-  scrollbar-width: thin;
-  scrollbar-color: rgba(255, 255, 255, 0.22) transparent;
+     a lane still shorter shrinks the tabs. The strip never scrolls. */
+  overflow: hidden;
 }
 
 #right-rail-tools {
@@ -172,16 +169,20 @@ body:not(.mobile-shell)
   outline-offset: -3px;
 }
 
+/* A tab shrinks in proportion to its label when the strip is short, and
+   clips the label at its end, faded over the bottom padding. */
 .right-rail-tab {
   position: relative;
   display: flex;
-  flex: 0 0 auto;
-  align-items: center;
+  flex: 0 1 auto;
+  align-items: flex-start;
   justify-content: center;
   box-sizing: border-box;
   width: var(--right-rail-tabs-width);
-  min-height: 40px;
+  min-height: 0;
   padding: 6px 0;
+  overflow: hidden;
+  mask-image: linear-gradient(to bottom, #000 calc(100% - 6px), transparent);
   border: 0;
   border-radius: var(--right-rail-tab-radius);
   background: transparent;
@@ -228,9 +229,9 @@ body:not(.mobile-shell)
   }
 
   .right-rail-tab {
-    min-height: 36px;
     padding: 4px 0;
     letter-spacing: 1.3px;
+    mask-image: linear-gradient(to bottom, #000 calc(100% - 4px), transparent);
   }
 
   #right-rail-tools {

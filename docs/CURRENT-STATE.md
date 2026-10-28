@@ -1487,7 +1487,9 @@ gives every owner-collapsed panel back. Stable Display allocation avoids
 unnecessary style writes.
 The compact Radio player is independent of Context: its launcher toggles it
 whether Context is collapsed or open, and only an outside pointer, Escape, its
-close button or its Details button closes it, never a layout pass.
+close button or its Details button closes it, never a layout pass. The
+expanded Enable's reveal of the directory and Play lands its smooth scroll
+even when a rail layout pass, measuring the panels, cuts it short.
 The right rail skips panels hidden by other CSS (computed `display: none`), but
 keeps the collapsed panels its own exclusive presentation hides, so the owner
 rule can still give them back.
@@ -1511,8 +1513,8 @@ the DOM so Tab from the open tab reaches the tool slot and then the panel.
 Labels are the panels' own translated header titles. The rail's lane shares
 the left rail's top; when it is too short for the strip, the rail climbs toward
 the HUD corner above as far as the strip needs (`src/ui/rightPanelRail.js`),
-and only a lane still shorter scrolls the strip, with a thin scrollbar and the
-open tab kept in view. Under the tabs the strip's
+and a lane still shorter shrinks the tabs in proportion, clipping their
+labels at the end; the strip never scrolls. Under the tabs the strip's
 column keeps a tool slot (`#right-rail-tools`) that holds the compact Radio
 launcher on desktop: `src/ui/radioPanelPlacement.js` moves it there from
 Context's header, and back for the phone sheet, so the compact player stays one

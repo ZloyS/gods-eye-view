@@ -213,11 +213,6 @@ test('builds one tab per visible rail panel, in rail order, labelled from the pa
   assert.deepEqual(f.tabs.tools.children, [], 'the slot starts empty');
   assert.equal(f.strip.id, RIGHT_RAIL_TABS_ID);
   assert.equal(f.strip.getAttribute('role'), 'tablist');
-  assert.equal(
-    f.strip.getAttribute('data-rail-scroller'),
-    '',
-    'the rail layout pass keeps the strip scroll offset across measuring',
-  );
   assert.equal(f.strip.getAttribute('aria-orientation'), 'vertical');
   assert.equal(f.rail.getAttribute(RIGHT_RAIL_TABS_ATTRIBUTE), 'vertical');
   assert.deepEqual(
@@ -372,7 +367,6 @@ test('publishes the open tab extent on the rail and keeps a join element under t
     offsetHeight: 300,
     offsetWidth: 330,
   });
-  f.strip.scrollTop = 0;
   f.cctv.classList.remove('collapsed');
   f.tabs.sync();
   assert.deepEqual([...props], [['--rail-tab-bottom', '142px']]);
@@ -381,13 +375,6 @@ test('publishes the open tab extent on the rail and keeps a join element under t
   assert.match(
     glass.style.clipPath,
     /^path\('M 16 0 L 314 0 A 16 16 0 0 1 330 16 L 330 78 /,
-  );
-  f.strip.scrollTop = 20;
-  f.tabs.sync();
-  assert.equal(
-    props.get('--rail-tab-bottom'),
-    '122px',
-    'strip scroll is subtracted',
   );
   f.cctv.classList.add('collapsed');
   f.tabs.sync();
@@ -517,16 +504,16 @@ test('a rail panel hidden at mount gets its tab when its owner unhides it, from 
   tabs.destroy();
 });
 
-test('a newly opened tab is scrolled into the strip window once; the join follows the visible part', () => {
+test('a tab shrunk by a short strip joins with corners no larger than half its height', () => {
   const f = fixture();
   // The strip's offsets are relative to its column, the column's to the rail.
   Object.assign(f.tabs.column, { offsetTop: 0, offsetLeft: 320 });
-  Object.assign(f.strip, { clientHeight: 100, scrollTop: 0, offsetLeft: 10 });
+  Object.assign(f.strip, { offsetLeft: 10 });
   const tab = f.tabFor('global-context-panel');
   Object.assign(tab, {
     offsetTop: 150,
     offsetLeft: 0,
-    offsetHeight: 56,
+    offsetHeight: 12,
     offsetWidth: 42,
   });
   Object.assign(f.context, {
@@ -537,49 +524,13 @@ test('a newly opened tab is scrolled into the strip window once; the join follow
   });
   f.context.classList.remove('collapsed');
   f.tabs.sync();
-  assert.equal(
-    f.strip.scrollTop,
-    106,
-    'opened: scrolled so the tab bottom meets the window',
-  );
-  assert.equal(f.rail.style.props.get('--rail-tab-bottom'), '100px');
+  assert.equal(f.rail.style.props.get('--rail-tab-bottom'), '162px');
   const [, glass] = f.tabs.join.children;
-  f.strip.scrollTop = 220;
-  f.tabs.sync();
-  assert.equal(
-    f.strip.scrollTop,
-    220,
-    'a sync after the user scrolled leaves the strip alone',
-  );
-  assert.equal(
-    glass.style.clipPath,
-    "path('M 16 0 L 314 0 A 16 16 0 0 1 330 16 L 330 284 A 16 16 0 0 1 314 300 L 16 300 A 16 16 0 0 1 0 284 L 0 16 A 16 16 0 0 1 16 0 Z')",
-    'the tab is out of view: the join is the panel alone',
-  );
-  f.strip.scrollTop = 190;
-  f.tabs.sync();
   assert.match(
     glass.style.clipPath,
-    /^path\('M 16 0 L 364 0 A 8 8 0 0 1 372 8 A 8 8 0 0 1 364 16 L 338 16 A 8 8 0 0 0 330 24 L 330 284 /,
-    'a tab half in view joins with the visible 16px and smaller corners',
+    /L 366 150 A 6 6 0 0 1 372 156 A 6 6 0 0 1 366 162 L 338 162 /,
+    'a 12px tab gets 6px corners',
   );
-  const cctvTab = f.tabFor('cctv-panel');
-  Object.assign(cctvTab, {
-    offsetTop: 86,
-    offsetLeft: 0,
-    offsetHeight: 56,
-    offsetWidth: 42,
-  });
-  Object.assign(f.cctv, {
-    offsetTop: 0,
-    offsetLeft: 0,
-    offsetHeight: 300,
-    offsetWidth: 330,
-  });
-  f.context.classList.add('collapsed');
-  f.cctv.classList.remove('collapsed');
-  f.tabs.sync();
-  assert.equal(f.strip.scrollTop, 86, 'another tab opens: brought into view');
 });
 
 test('railJoinPath shrinks the fillet and corner to the room left, down to a shared edge', () => {
@@ -630,7 +581,7 @@ test('railJoinPath shrinks the fillet and corner to the room left, down to a sha
   );
 });
 
-test('the stylesheet keeps phones on border-box, folds the strip into narrow desktops, shows a scrollbar and draws the focus ring inside', () => {
+test('the stylesheet keeps phones on border-box, folds the strip into narrow desktops, shrinks tabs instead of scrolling and draws the focus ring inside', () => {
   const css = readStylesheet(new URL('../../style.css', import.meta.url));
   assert.match(
     css,
@@ -640,8 +591,16 @@ test('the stylesheet keeps phones on border-box, folds the strip into narrow des
     css,
     /@media \(min-width: 721px\) and \(max-width: 760px\) \{\s*#right-context-rail\[data-rail-tabs\] \{\s*width: calc\(330px - var\(--right-rail-tabs-inset\)\);/,
   );
-  assert.match(css, /#right-rail-tabs \{[^}]*scrollbar-width: thin;/);
-  assert.doesNotMatch(css, /#right-rail-tabs::-webkit-scrollbar/);
+  assert.match(css, /#right-rail-tabs \{[^}]*overflow: hidden;/);
+  assert.doesNotMatch(
+    css,
+    /#right-rail-tabs \{[^}]*(overflow: [^;]*auto|scrollbar-width)/,
+  );
+  // The tabs give way in proportion and clip their labels at the end.
+  assert.match(
+    css,
+    /\.right-rail-tab \{[^}]*flex: 0 1 auto;[^}]*align-items: flex-start;[^}]*min-height: 0;[^}]*overflow: hidden;[^}]*mask-image: linear-gradient\(to bottom, #000 calc\(100% - 6px\), transparent\);/,
+  );
   // The rail layout pass measures the column's natural height to climb above
   // its baseline before the strip has to scroll.
   assert.match(

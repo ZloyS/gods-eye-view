@@ -75,9 +75,8 @@ export function railTabPanels(rail) {
  *
  * @param {object} g
  * @param {{x0: number, y0: number, x1: number, y1: number}} g.panel
- * @param {{top: number, bottom: number, right: number}|null} g.tab The tab's
- *   extent; its left edge is the panel's right edge. Null draws the panel
- *   alone.
+ * @param {{top: number, bottom: number, right: number}} g.tab The tab's
+ *   extent; its left edge is the panel's right edge.
  * @param {number} [g.corner] Panel corner radius, or the chamfer size.
  * @param {number} [g.tabRadius] The tab's outer corner radius.
  * @param {number} [g.fillet] Concave fillet radius at the junction.
@@ -100,24 +99,21 @@ export function railJoinPath({
   const y0 = panel.y0 + inset;
   const x1 = panel.x1 - inset;
   const y1 = panel.y1 - inset;
-  // No tab (it is scrolled out of the strip): the panel alone.
-  const ty0 = tab ? tab.top + inset : NaN;
-  const ty1 = tab ? tab.bottom - inset : NaN;
-  const tx1 = tab ? tab.right - inset : NaN;
+  const ty0 = tab.top + inset;
+  const ty1 = tab.bottom - inset;
+  const tx1 = tab.right - inset;
   if (style === 'chamfer') {
     const c = corner;
     const cx = (panel.x0 + panel.x1) / 2;
     // The tab's edges along the panel stay between the chamfers.
     const tyA = Math.max(ty0, y0 + c);
     const tyB = Math.max(tyA, Math.min(ty1, y1 - c));
-    const edge = tab
-      ? [
-          `L ${P(x1, tyA)}`,
-          `L ${P(tx1, tyA)}`,
-          `L ${P(tx1, tyB)}`,
-          `L ${P(x1, tyB)}`,
-        ]
-      : [];
+    const edge = [
+      `L ${P(x1, tyA)}`,
+      `L ${P(tx1, tyA)}`,
+      `L ${P(tx1, tyB)}`,
+      `L ${P(x1, tyB)}`,
+    ];
     return [
       `M ${P(x0, y0 + c)}`,
       `L ${P(x0 + c, y0)}`,
@@ -165,35 +161,28 @@ export function railJoinPath({
     return { fillet, corner: Math.min(R, Math.max(0, room - fillet)) };
   };
   move(x0 + R, y0);
-  if (!tab) {
-    line(x1 - R, y0);
-    arc(R, 1, x1, y0 + R);
-    line(x1, y1 - R);
-    arc(R, 1, x1 - R, y1);
+  const first = tab.top - panel.y0 < 0.5;
+  const last = panel.y1 - tab.bottom < 0.5;
+  const above = fit(ty0 - y0);
+  const below = fit(y1 - ty1);
+  if (first) {
+    line(tx1 - r, y0);
+    arc(r, 1, tx1, y0 + r);
   } else {
-    const first = tab.top - panel.y0 < 0.5;
-    const last = panel.y1 - tab.bottom < 0.5;
-    const above = fit(ty0 - y0);
-    const below = fit(y1 - ty1);
-    if (first) {
-      line(tx1 - r, y0);
-      arc(r, 1, tx1, y0 + r);
-    } else {
-      line(x1 - above.corner, y0);
-      arc(above.corner, 1, x1, y0 + above.corner);
-      line(x1, ty0 - above.fillet);
-      arc(above.fillet, 0, x1 + above.fillet, ty0);
-      line(tx1 - r, ty0);
-      arc(r, 1, tx1, ty0 + r);
-    }
-    line(tx1, ty1 - r);
-    arc(r, 1, tx1 - r, ty1);
-    if (!last) {
-      line(x1 + below.fillet, ty1);
-      arc(below.fillet, 0, x1, ty1 + below.fillet);
-      line(x1, y1 - below.corner);
-      arc(below.corner, 1, x1 - below.corner, y1);
-    }
+    line(x1 - above.corner, y0);
+    arc(above.corner, 1, x1, y0 + above.corner);
+    line(x1, ty0 - above.fillet);
+    arc(above.fillet, 0, x1 + above.fillet, ty0);
+    line(tx1 - r, ty0);
+    arc(r, 1, tx1, ty0 + r);
+  }
+  line(tx1, ty1 - r);
+  arc(r, 1, tx1 - r, ty1);
+  if (!last) {
+    line(x1 + below.fillet, ty1);
+    arc(below.fillet, 0, x1, ty1 + below.fillet);
+    line(x1, y1 - below.corner);
+    arc(below.corner, 1, x1 - below.corner, y1);
   }
   line(x0 + R, y1);
   arc(R, 1, x0, y1 - R);
@@ -239,10 +228,6 @@ export function createRightRailTabs({
   strip.setAttribute('role', 'tablist');
   strip.setAttribute('aria-orientation', 'vertical');
   strip.setAttribute('aria-label', t('Panels'));
-  // The rail's measuring pass (rightPanelRail.js) lifts the column's lane
-  // clamp, which would reset a scrolled strip; the marker has it put the
-  // offset back.
-  strip.setAttribute('data-rail-scroller', '');
   const tools = documentRef.createElement('div');
   tools.id = RIGHT_RAIL_TOOLS_ID;
   column.append(strip, tools);
@@ -296,7 +281,7 @@ export function createRightRailTabs({
     typeof Observer === 'function' ? new Observer(() => sync()) : null;
   // Tab heights follow their labels (fonts, locale) and panel heights their
   // content and allocation: re-measure the join when the strip or a panel
-  // changes size and on strip scroll.
+  // changes size.
   const Resize = documentRef.defaultView?.ResizeObserver;
   const resizer =
     typeof Resize === 'function' ? new Resize(() => sync()) : null;
@@ -325,28 +310,13 @@ export function createRightRailTabs({
    * extended down to cover the tab if that is shorter, but never past the
    * rail's lane (--right-stack-max-height).
    */
-  let shownTab = null;
   function placeJoin(tab, panel) {
     if (!tab) {
       rail.style.removeProperty('--rail-tab-bottom');
       join.hidden = true;
-      shownTab = null;
       return;
     }
-    // A short lane makes the strip scroll. A newly opened tab is brought into
-    // view once; after that the strip scrolls as the user wishes and the join
-    // follows the visible part of the tab, or the panel alone.
-    const viewHeight = strip.clientHeight;
-    const scrolls = Number.isFinite(viewHeight) && viewHeight > 0;
-    if (scrolls && tab !== shownTab) {
-      const above = tab.offsetTop - strip.scrollTop;
-      const below =
-        tab.offsetTop + tab.offsetHeight - (strip.scrollTop + viewHeight);
-      if (above < 0) strip.scrollTop += above;
-      else if (below > 0) strip.scrollTop += below;
-    }
-    shownTab = tab;
-    const top = tab.offsetTop - (strip.scrollTop || 0);
+    const top = tab.offsetTop;
     rail.style.setProperty('--rail-tab-bottom', `${top + tab.offsetHeight}px`);
     const computed = documentRef.defaultView?.getComputedStyle?.(rail);
     const corner = token(computed, '--right-rail-corner', 16);
@@ -360,13 +330,8 @@ export function createRightRailTabs({
     // column's to the rail.
     const stripTop = (column.offsetTop || 0) + (strip.offsetTop || 0);
     const stripLeft = (column.offsetLeft || 0) + (strip.offsetLeft || 0);
-    let tabTop = stripTop + top;
-    let tabBottom = tabTop + tab.offsetHeight;
-    if (scrolls) {
-      tabTop = Math.max(tabTop, stripTop);
-      tabBottom = Math.min(tabBottom, stripTop + viewHeight);
-    }
-    const visible = tabBottom - tabTop >= 1;
+    const tabTop = stripTop + top;
+    const tabBottom = tabTop + tab.offsetHeight;
     const geometry = {
       panel: {
         x0: panel.offsetLeft,
@@ -374,20 +339,17 @@ export function createRightRailTabs({
         x1: panel.offsetLeft + panel.offsetWidth,
         y1: Math.max(
           panel.offsetTop + panel.offsetHeight,
-          visible ? Math.min(lane, tabBottom + fillet + 4 + corner) : 0,
+          Math.min(lane, tabBottom + fillet + 4 + corner),
         ),
       },
-      tab: visible
-        ? {
-            top: tabTop,
-            bottom: tabBottom,
-            right: stripLeft + tab.offsetLeft + tab.offsetWidth,
-          }
-        : null,
+      tab: {
+        top: tabTop,
+        bottom: tabBottom,
+        right: stripLeft + tab.offsetLeft + tab.offsetWidth,
+      },
       corner,
-      tabRadius: visible
-        ? Math.min(tabRadius, (tabBottom - tabTop) / 2)
-        : tabRadius,
+      // A tab shrunk by a short strip keeps corners no larger than half of it.
+      tabRadius: Math.min(tabRadius, (tabBottom - tabTop) / 2),
       fillet,
       style: chamfer ? 'chamfer' : 'round',
     };
@@ -465,10 +427,8 @@ export function createRightRailTabs({
     event.preventDefault();
     visible[next].focus();
   };
-  const onScroll = () => sync();
   strip.addEventListener('click', onClick);
   strip.addEventListener('keydown', onKeydown);
-  strip.addEventListener('scroll', onScroll, { passive: true });
   observer?.observe(rail, { childList: true });
   rail.prepend(column);
   rail.append(join);
@@ -487,7 +447,6 @@ export function createRightRailTabs({
       resizer?.disconnect();
       strip.removeEventListener('click', onClick);
       strip.removeEventListener('keydown', onKeydown);
-      strip.removeEventListener('scroll', onScroll);
       column.remove();
       join.remove();
       rail.removeAttribute(RIGHT_RAIL_TABS_ATTRIBUTE);
