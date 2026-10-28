@@ -72,10 +72,15 @@
   pointer-events: auto;
 }
 
-/* The layout pass reads the column's natural height with the lane clamp
-   lifted, to climb when the lane is too short for it (rightPanelRail.js). */
+/* The layout pass reads the column's natural height with the lane clamp and
+   the shared tab heights lifted, to climb when the lane is too short for it
+   (rightPanelRail.js). */
 #right-context-rail[data-rail-measuring] > #right-rail-column {
   max-height: none !important;
+}
+
+#right-context-rail[data-rail-measuring] #right-rail-tabs > .right-rail-tab {
+  height: auto !important;
 }
 
 #right-rail-tabs {
@@ -169,8 +174,9 @@ body:not(.mobile-shell)
   outline-offset: -3px;
 }
 
-/* A tab shrinks in proportion to its label when the strip is short, and
-   clips the label at its end, faded over the bottom padding. */
+/* A short strip is shared between the tabs (rightRailTabs.js): the long
+   labels end up the same height. A tab clips its label at the end, faded over
+   the bottom padding. */
 .right-rail-tab {
   position: relative;
   display: flex;

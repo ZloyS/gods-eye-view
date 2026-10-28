@@ -504,6 +504,46 @@ test('a rail panel hidden at mount gets its tab when its owner unhides it, from 
   tabs.destroy();
 });
 
+test('a strip shorter than its tabs is shared: short labels keep their height, the long ones get equal heights', () => {
+  const f = fixture();
+  f.doc.defaultView = {
+    getComputedStyle: (el) => ({
+      getPropertyValue: (name) => el.style.props.get(name) ?? '',
+    }),
+  };
+  f.strip.style.setProperty('row-gap', '4px');
+  const labels = {
+    'pp-toggles': 49,
+    'cctv-panel': 28,
+    'global-context-panel': 49,
+  };
+  for (const [id, height] of Object.entries(labels)) {
+    const tab = f.tabFor(id);
+    tab.style.setProperty('padding-top', '6px');
+    tab.style.setProperty('padding-bottom', '6px');
+    tab.children[0].offsetHeight = height;
+  }
+  // The column holds the strip (160px) and a 40px tool slot; the lane is 200.
+  Object.assign(f.tabs.column, { offsetHeight: 200 });
+  Object.assign(f.strip, { offsetHeight: 160 });
+  f.rail.style.setProperty('--right-stack-max-height', '200px');
+  f.tabs.sync();
+  // Room 152 for naturals 61, 40, 61: CCTV keeps 40, the other two share 112.
+  assert.equal(f.tabFor('cctv-panel').style.props.has('height'), false);
+  assert.equal(f.tabFor('pp-toggles').style.props.get('height'), '56px');
+  assert.equal(
+    f.tabFor('global-context-panel').style.props.get('height'),
+    '56px',
+  );
+  f.rail.style.setProperty('--right-stack-max-height', '400px');
+  f.tabs.sync();
+  assert.equal(
+    f.strip.children.some((tab) => tab.style.props.has('height')),
+    false,
+    'a lane with room gives every tab its natural height back',
+  );
+});
+
 test('a tab shrunk by a short strip joins with corners no larger than half its height', () => {
   const f = fixture();
   // The strip's offsets are relative to its column, the column's to the rail.
@@ -596,7 +636,7 @@ test('the stylesheet keeps phones on border-box, folds the strip into narrow des
     css,
     /#right-rail-tabs \{[^}]*(overflow: [^;]*auto|scrollbar-width)/,
   );
-  // The tabs give way in proportion and clip their labels at the end.
+  // The tabs give way to a short strip and clip their labels at the end.
   assert.match(
     css,
     /\.right-rail-tab \{[^}]*flex: 0 1 auto;[^}]*align-items: flex-start;[^}]*min-height: 0;[^}]*overflow: hidden;[^}]*mask-image: linear-gradient\(to bottom, #000 calc\(100% - 6px\), transparent\);/,
@@ -606,6 +646,11 @@ test('the stylesheet keeps phones on border-box, folds the strip into narrow des
   assert.match(
     css,
     /#right-context-rail\[data-rail-measuring\] > #right-rail-column \{\s*max-height: none !important;/,
+  );
+  assert.match(
+    css,
+    /#right-context-rail\[data-rail-measuring\] #right-rail-tabs > \.right-rail-tab \{\s*height: auto !important;/,
+    'shared tab heights are lifted for the measurement, or the climb would see a column that already fits',
   );
   assert.match(
     css,

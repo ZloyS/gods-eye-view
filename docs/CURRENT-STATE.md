@@ -1513,8 +1513,9 @@ the DOM so Tab from the open tab reaches the tool slot and then the panel.
 Labels are the panels' own translated header titles. The rail's lane shares
 the left rail's top; when it is too short for the strip, the rail climbs toward
 the HUD corner above as far as the strip needs (`src/ui/rightPanelRail.js`),
-and a lane still shorter shrinks the tabs in proportion, clipping their
-labels at the end; the strip never scrolls. Under the tabs the strip's
+and a lane still shorter is shared equally between the tabs: a label short
+enough keeps its height, the long ones end up the same height and clip at the
+end; the strip never scrolls. Under the tabs the strip's
 column keeps a tool slot (`#right-rail-tools`) that holds the compact Radio
 launcher on desktop: `src/ui/radioPanelPlacement.js` moves it there from
 Context's header, and back for the phone sheet, so the compact player stays one
