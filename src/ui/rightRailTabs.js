@@ -296,68 +296,11 @@ export function createRightRailTabs({
     });
   };
 
-  /** A length from a computed style, in pixels. */
+  /** A join token from the stylesheet (--right-rail-*), in pixels. */
   const token = (computed, name, fallback) => {
     const value = parseFloat(computed?.getPropertyValue?.(name));
     return Number.isFinite(value) ? value : fallback;
   };
-
-  /**
-   * Share a strip shorter than its tabs. The lane (--right-stack-max-height)
-   * less the tool slot and the strip's gaps is divided equally; a tab shorter
-   * than its share keeps its height and the rest is shared again, so the long
-   * labels end up the same height and clip alike (styles/right-rail-tabs.css).
-   * Tabs that fit keep their natural height.
-   */
-  const heights = new WeakMap();
-  const setHeight = (tab, value) => {
-    if (heights.get(tab) === value) return;
-    heights.set(tab, value);
-    if (value) tab.style.setProperty('height', value);
-    else tab.style.removeProperty('height');
-  };
-  function fitTabs(tabs) {
-    const styleOf = (el) => documentRef.defaultView?.getComputedStyle?.(el);
-    const stripStyle = styleOf(strip);
-    const lane = token(styleOf(rail), '--right-stack-max-height', NaN);
-    const chrome =
-      token(stripStyle, 'row-gap', 0) * Math.max(0, tabs.length - 1) +
-      token(stripStyle, 'padding-top', 0) +
-      token(stripStyle, 'padding-bottom', 0);
-    const overhead = (column.offsetHeight || 0) - (strip.offsetHeight || 0);
-    const room = lane - overhead - chrome;
-    const entries = tabs.map((tab) => {
-      const tabStyle = styleOf(tab);
-      return {
-        tab,
-        natural:
-          (tab.firstElementChild?.offsetHeight || 0) +
-          token(tabStyle, 'padding-top', 0) +
-          token(tabStyle, 'padding-bottom', 0),
-      };
-    });
-    const natural = entries.reduce((sum, entry) => sum + entry.natural, 0);
-    if (
-      !(room > 0) ||
-      natural <= room + 0.5 ||
-      entries.some((entry) => !(entry.natural > 0))
-    ) {
-      for (const entry of entries) setHeight(entry.tab, '');
-      return;
-    }
-    let remaining = room;
-    let count = entries.length;
-    for (const entry of [...entries].sort((a, b) => a.natural - b.natural)) {
-      const share = remaining / count;
-      if (entry.natural <= share) {
-        remaining -= entry.natural;
-        count -= 1;
-        setHeight(entry.tab, '');
-      } else {
-        setHeight(entry.tab, `${Math.round(share * 100) / 100}px`);
-      }
-    }
-  }
 
   /**
    * Publish the join: the open tab's bottom on the rail (--rail-tab-bottom,
@@ -442,10 +385,8 @@ export function createRightRailTabs({
     // would drop keyboard focus on every class change.
     let cursor = strip.firstElementChild;
     let open = null;
-    const tabs = [];
     for (const panel of panels) {
       const { tab, label } = entryFor(panel);
-      tabs.push(tab);
       if (tab !== cursor) strip.insertBefore(tab, cursor);
       else cursor = cursor.nextElementSibling;
       const collapsed = panel.classList.contains('collapsed');
@@ -464,7 +405,6 @@ export function createRightRailTabs({
       entry.tab.remove();
       entries.delete(id);
     }
-    fitTabs(tabs);
     placeJoin(open?.tab, open?.panel);
   }
 
@@ -490,19 +430,6 @@ export function createRightRailTabs({
   strip.addEventListener('click', onClick);
   strip.addEventListener('keydown', onKeydown);
   observer?.observe(rail, { childList: true });
-  // Tabs holding shared heights do not resize with the lane: watch the rail's
-  // style for a new lane. The join's own writes to that style change no lane.
-  let seenLane = rail.style?.getPropertyValue?.('--right-stack-max-height');
-  const laneObserver =
-    typeof Observer === 'function'
-      ? new Observer(() => {
-          const lane = rail.style.getPropertyValue('--right-stack-max-height');
-          if (lane === seenLane) return;
-          seenLane = lane;
-          sync();
-        })
-      : null;
-  laneObserver?.observe(rail, { attributes: true, attributeFilter: ['style'] });
   rail.prepend(column);
   rail.append(join);
   sync();
@@ -517,7 +444,6 @@ export function createRightRailTabs({
       if (destroyed) return;
       destroyed = true;
       observer?.disconnect();
-      laneObserver?.disconnect();
       resizer?.disconnect();
       strip.removeEventListener('click', onClick);
       strip.removeEventListener('keydown', onKeydown);

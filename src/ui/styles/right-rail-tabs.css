@@ -58,7 +58,9 @@
 }
 
 /* The strip's column: the tablist, then a tool slot that holds the compact
-   Radio launcher on desktop (radioPanelPlacement.js). */
+   Radio launcher on desktop (radioPanelPlacement.js). It stands the lane's
+   full height, which makes the strip's size definite so its tabs can share
+   it (see .right-rail-tab); only the strip and the slot take the pointer. */
 #right-rail-column {
   position: absolute;
   top: 0;
@@ -68,18 +70,13 @@
   flex-direction: column;
   box-sizing: border-box;
   width: var(--right-rail-tabs-inset);
-  max-height: var(--right-stack-max-height, 70vh);
-  pointer-events: auto;
+  height: var(--right-stack-max-height, 70vh);
+  pointer-events: none;
 }
 
-/* The layout pass reads the column's natural height with the lane clamp and
-   the shared tab heights lifted, to climb when the lane is too short for it
-   (rightPanelRail.js). */
+/* The layout pass reads the column's natural height, to climb when the lane
+   is too short for it (rightPanelRail.js). */
 #right-context-rail[data-rail-measuring] > #right-rail-column {
-  max-height: none !important;
-}
-
-#right-context-rail[data-rail-measuring] #right-rail-tabs > .right-rail-tab {
   height: auto !important;
 }
 
@@ -96,6 +93,7 @@
   /* The rail climbs above its baseline to fit the column (rightPanelRail.js);
      a lane still shorter shrinks the tabs. The strip never scrolls. */
   overflow: hidden;
+  pointer-events: auto;
 }
 
 #right-rail-tools {
@@ -106,6 +104,7 @@
   box-sizing: border-box;
   margin-top: 6px;
   padding-left: var(--right-rail-tabs-gap);
+  pointer-events: auto;
 }
 
 #right-rail-tools:empty {
@@ -174,18 +173,22 @@ body:not(.mobile-shell)
   outline-offset: -3px;
 }
 
-/* A short strip is shared between the tabs (rightRailTabs.js): the long
-   labels end up the same height. A tab clips its label at the end, faded over
-   the bottom padding. */
+/* A short strip is shared between the tabs: a zero basis hands the strip's
+   height out in equal parts, a tab's own length caps its part, and what a
+   short label leaves goes to the longer ones, which end up the same height. A
+   strip with room gives every tab its own length. The basis is 0%, not 0:
+   the strip's content size, which sizes the column, comes from the labels. A
+   tab clips its label at the end, faded over the bottom padding. */
 .right-rail-tab {
   position: relative;
   display: flex;
-  flex: 0 1 auto;
+  flex: 1 1 0%;
   align-items: flex-start;
   justify-content: center;
   box-sizing: border-box;
   width: var(--right-rail-tabs-width);
   min-height: 0;
+  max-height: max-content;
   padding: 6px 0;
   overflow: hidden;
   mask-image: linear-gradient(to bottom, #000 calc(100% - 6px), transparent);
