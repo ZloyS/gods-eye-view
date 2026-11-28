@@ -1,5 +1,6 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
+import { setLocale, t } from '../i18n/index.js';
 import { twoline2satrec } from 'satellite.js';
 import { EARTH_RADIUS_KM } from '../geoDistance.js';
 import { fromDegrees } from '../geo/ellipsoid.js';
@@ -1071,11 +1072,77 @@ test('a breakdown names "Other" once', () => {
   const data = manager({
     'ais-live-vessels': { name: 'Vessels', records: ships },
   });
-  const labels = layerBreakdown(data, 'ais-live-vessels').splits[0].parts.map(
-    (part) => part.label,
+  for (const split of layerBreakdown(data, 'ais-live-vessels').splits) {
+    const labels = split.parts.map((part) => part.label);
+    assert.equal(labels.filter((label) => label === 'Other').length <= 1, true);
+    assert.equal(new Set(labels).size, labels.length);
+  }
+});
+
+test('vessels split by category as the chips name them, then by type', () => {
+  const ship = (i, extra) => ({
+    id: `V${i}`,
+    mmsi: String(366000000 + i),
+    lat: 1,
+    lon: 1 + i * 0.01,
+    shipType: null,
+    typeBroad: null,
+    destination: null,
+    virtual: false,
+    ...extra,
+  });
+  const ships = [
+    ship(1, { shipType: '80' }),
+    ship(2, { shipType: '84' }),
+    ship(3, { shipType: 'Oil Products Tanker' }),
+    ship(4, { shipType: '70' }),
+    // Typed by its broad type only.
+    ship(5, { typeBroad: 'Cargo' }),
+    // A SAR aircraft and a coast station, by their MMSIs.
+    ship(6, { mmsi: '111244100' }),
+    ship(7, { mmsi: '002442234' }),
+    // A virtual aid to navigation.
+    ship(8, { virtual: true }),
+  ];
+  const data = manager({
+    'ais-live-vessels': { name: 'Vessels', records: ships },
+  });
+  const breakdown = layerBreakdown(data, 'ais-live-vessels');
+  assert.equal(breakdown.total, 8);
+  assert.deepEqual(
+    breakdown.splits.map((split) => split.title),
+    ['Category', 'Type'],
   );
-  assert.equal(labels.filter((label) => label === 'Other').length <= 1, true);
-  assert.equal(new Set(labels).size, labels.length);
+  const category = { context: 'vessel category' };
+  assert.deepEqual(breakdown.splits[0].parts, [
+    { label: 'Tankers', count: 3, ...category },
+    { label: 'Cargo', count: 2, ...category },
+    { label: 'Other', count: 2, ...category },
+    { label: 'Service', count: 1, ...category },
+  ]);
+  // The rows read as the chips do: plural category names.
+  try {
+    setLocale('ru');
+    assert.deepEqual(
+      breakdown.splits[0].parts.map((part) =>
+        t(part.label, { context: part.context }),
+      ),
+      ['Танкеры', 'Грузовые', 'Прочие', 'Служебные'],
+    );
+  } finally {
+    setLocale('en');
+  }
+  // What the category is read from is not a fact on the card.
+  const card = describeEntity(data, {
+    layerId: 'ais-live-vessels',
+    id: 'V8',
+    lat: 1,
+    lon: 1 + 8 * 0.01,
+  });
+  assert.deepEqual(
+    card.facts.filter((fact) => ['typeBroad', 'virtual'].includes(fact.field)),
+    [],
+  );
 });
 
 test('a card shows the photo its layer looked up: the tracked airliner, the selected vessel', () => {

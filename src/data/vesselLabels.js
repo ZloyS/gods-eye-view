@@ -34,6 +34,25 @@ export const AID_TO_NAVIGATION_STYLE = Object.freeze({
   accent: '217, 210, 192',
 });
 
+/** A distress beacon's mark and card accent: an alarm red. */
+export const DISTRESS_BEACON_STYLE = Object.freeze({
+  css: '#ff3030',
+  accent: '255, 48, 48',
+});
+
+/**
+ * The colour of each kind of record that is not a vessel (`nonVesselKind`):
+ * stations and platforms share the aids' bone white, a search-and-rescue aircraft takes
+ * the government vessels' grey and a distress beacon its alarm red.
+ */
+export const NON_VESSEL_STYLES = Object.freeze({
+  aid: AID_TO_NAVIGATION_STYLE,
+  station: AID_TO_NAVIGATION_STYLE,
+  platform: AID_TO_NAVIGATION_STYLE,
+  aircraft: VESSEL_KIND_STYLES.military,
+  beacon: DISTRESS_BEACON_STYLE,
+});
+
 // Card text for the type tokens above. The tokens stay English: the vessel
 // kinds (`vesselKind`) and tests match on them.
 const TYPE_DISPLAY_KEYS = Object.freeze({

@@ -31,6 +31,9 @@ const AISSTREAM_DEFAULT_MESSAGE_TYPES = [
   'StaticDataReport',
   // Buoys, beacons and other aids to navigation (AIS message 21).
   'AidsToNavigationReport',
+  // Coast and AIS base stations (message 4) and search-and-rescue aircraft (message 9).
+  'BaseStationReport',
+  'StandardSearchAndRescueAircraftReport',
 ];
 // Watchdog budgets (policy lives in src/data/aisWatchdog.js). Silence is
 // REPORTED quickly and ACTED ON slowly: a dead feed must read as dead within

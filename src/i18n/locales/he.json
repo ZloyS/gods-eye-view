@@ -4645,5 +4645,16 @@
   "Reference monitor": "מכשיר ניטור ייחוס",
   "Needs {envVars} — add one in Provider Settings": "דורש {envVars} — הוסף אחד מהם בהגדרות הספקים",
   "CABLE \u00b7 {name}": "כבל · {name}",
-  "LANDING POINT \u00b7 {name}": "נקודת נחיתה · {name}"
+  "LANDING POINT \u00b7 {name}": "נקודת נחיתה · {name}",
+  "COAST STATION": "תחנת חוף",
+  "SAR AIRCRAFT": "כלי טיס חיפוש והצלה",
+  "DISTRESS BEACON": "משואת מצוקה",
+  "PLATFORM": "אסדה",
+  "vessel category|Tankers": "מכליות",
+  "vessel category|Cargo": "ספינות משא",
+  "vessel category|Passenger": "ספינות נוסעים",
+  "vessel category|Fishing": "ספינות דיג",
+  "vessel category|Service": "ספינות שירות",
+  "vessel category|Leisure": "ספינות פנאי",
+  "vessel category|Other": "אחרות"
 }

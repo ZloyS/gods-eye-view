@@ -1,10 +1,14 @@
 import { isRecognizedAisEnvelope } from '../../../src/data/aisStreamAdapter.js';
 import {
   aidToNavigationTypeName,
-  isAidToNavigation,
+  nonVesselKind,
+  normalizeMmsi,
 } from '../../../src/data/vesselTypes.js';
 export const AISSTREAM_CACHE_MAX = 50000;
 export const AISSTREAM_STALE_MS = 30 * 60 * 1000;
+// A capped snapshot leads with SAR aircraft and distress beacons, up to this
+// share of it, so a burst of beacon MMSIs cannot push the ships out.
+const AISSTREAM_SAFETY_ROW_SHARE = 0.1;
 // Per-MMSI recent-path ring buffers (PRD WS-F F3). Float32 lat/lon (~1m
 // precision, fine for 25m thinning) + Uint32 epoch seconds ≈ 12B/sample;
 // 64 samples × 50k MMSIs worst case ≈ 38MB. Tracks exist only while the dev
@@ -42,8 +46,12 @@ export function ingestAisStreamEnvelope(envelope, worldwide = false) {
   const messageType = envelope?.MessageType;
   const message = envelope?.Message?.[messageType] || {};
   const metadata = envelope?.MetaData || envelope?.Metadata || {};
-  const mmsi = stringValue(
-    metadata.MMSI ?? message.UserID ?? message.UserId ?? message.Mmsi,
+  // AISStream sends the MMSI as a number: a coast station's leading zeros
+  // are put back, so its 00 prefix still says what it is.
+  const mmsi = normalizeMmsi(
+    stringValue(
+      metadata.MMSI ?? message.UserID ?? message.UserId ?? message.Mmsi,
+    ),
   );
   if (!mmsi) return false;
   // Heard again after the retention window: start afresh, as after a prune.
@@ -124,7 +132,7 @@ export function ingestAisStreamEnvelope(envelope, worldwide = false) {
   // Delete then set: a Map keeps insertion order, so the cap evicts the least
   // recently updated vessel first.
   _aisStreamVessels.delete(mmsi);
-  _aisStreamVessels.set(mmsi, {
+  const row = {
     lat,
     lon,
     name:
@@ -141,7 +149,9 @@ export function ingestAisStreamEnvelope(envelope, worldwide = false) {
     destination: stringValue(message.Destination ?? staticData.destination),
     length: staticData.length ?? null,
     beam: staticData.beam ?? null,
-    speed: normalizedSpeedOverGround(message.Sog ?? message.SOG),
+    speed: (messageType === 'StandardSearchAndRescueAircraftReport'
+      ? aircraftSpeedOverGround
+      : normalizedSpeedOverGround)(message.Sog ?? message.SOG),
     course: normalizedCourseOverGround(message.Cog ?? message.COG),
     heading: normalizedHeading(message.TrueHeading ?? message.Heading),
     last_position_UTC: normalizeAisTimestamp(
@@ -155,7 +165,9 @@ export function ingestAisStreamEnvelope(envelope, worldwide = false) {
     ...(aidReport && message.VirtualAtoN === true && { virtual: true }),
     _updatedAt: Date.now(),
     _worldwide: worldwide,
-  });
+  };
+  row._kind = nonVesselKind(row);
+  _aisStreamVessels.set(mmsi, row);
 
   appendAisTrackSample(
     mmsi,
@@ -257,7 +269,8 @@ function writeAisTrackSample(track, lat, lon, epochSec) {
  * Reads a vessel's accumulated track in chronological order.
  * @returns {Array<{lat:number,lon:number,t:number}>}
  */
-export function readAisTrack(mmsi) {
+export function readAisTrack(number) {
+  const mmsi = normalizeMmsi(number);
   const track = _aisStreamTracks.get(mmsi);
   if (!track || !track.len) return [];
   // Hide an expired vessel's track, as aisStreamRows hides its row.
@@ -294,6 +307,8 @@ function mergeAisStaticIntoLiveVessel(mmsi, staticData) {
   if (staticData.imo) existing.imo = staticData.imo;
   if (staticData.length) existing.length = staticData.length;
   if (staticData.beam) existing.beam = staticData.beam;
+  // A row's _kind is its nonVesselKind, kept with its type and destination.
+  existing._kind = nonVesselKind(existing);
 }
 
 /**
@@ -343,7 +358,8 @@ function vesselTypeFromAis(message, staticData = {}) {
 
 /**
  * Fresh vessels received under the worldwide subscription and the latest
- * receive time. Excludes aids to navigation. Null when there are none.
+ * receive time. Excludes what is not a vessel (aids to navigation, stations,
+ * aircraft and beacons). Null when there are none.
  * @returns {?{count: number, at: number}}
  */
 export function aisStreamVesselCount() {
@@ -351,7 +367,7 @@ export function aisStreamVesselCount() {
   let count = 0;
   let at = 0;
   for (const row of _aisStreamVessels.values()) {
-    if (!row._worldwide || row._updatedAt < cutoff || isAidToNavigation(row))
+    if (!row._worldwide || row._updatedAt < cutoff || row._kind !== null)
       continue;
     count++;
     if (row._updatedAt > at) at = row._updatedAt;
@@ -360,24 +376,36 @@ export function aisStreamVesselCount() {
 }
 
 /**
- * The current rows, newest first, with every vessel ahead of every aid to
- * navigation: a capped request never gives up a ship for a buoy.
+ * The current rows, newest first, in runs: SAR aircraft and distress beacons
+ * first, up to a tenth of the request; then every vessel; then the rest of
+ * those, then aids to navigation, stations and platforms. A capped request
+ * keeps a distress signal and never gives up a ship for a buoy.
  */
 export function aisStreamRows(maxRows) {
   const cutoff = aisExpiryCutoffMs();
+  const safety = [];
   const vessels = [];
-  const aids = [];
+  const fixed = [];
   for (const row of _aisStreamVessels.values()) {
-    if (row._updatedAt >= cutoff)
-      (isAidToNavigation(row) ? aids : vessels).push(row);
+    if (row._updatedAt < cutoff) continue;
+    const kind = row._kind;
+    if (kind === null) vessels.push(row);
+    else if (kind === 'aircraft' || kind === 'beacon') safety.push(row);
+    else fixed.push(row);
   }
   const newestFirst = (a, b) => b._updatedAt - a._updatedAt;
+  safety.sort(newestFirst);
   vessels.sort(newestFirst);
-  if (vessels.length < maxRows) aids.sort(newestFirst);
-  return vessels
-    .concat(aids)
+  const head = safety.splice(
+    0,
+    Math.floor(maxRows * AISSTREAM_SAFETY_ROW_SHARE),
+  );
+  if (head.length + vessels.length + safety.length < maxRows)
+    fixed.sort(newestFirst);
+  return head
+    .concat(vessels, safety, fixed)
     .slice(0, maxRows)
-    .map(({ _updatedAt, _worldwide, ...row }) => row);
+    .map(({ _updatedAt, _worldwide, _kind, ...row }) => row);
 }
 
 /**
@@ -409,7 +437,22 @@ export function aisStreamCacheStats() {
 }
 
 export function newestAisPositionAt(rows) {
-  return rows[0]?.last_position_UTC || null;
+  // Rows are not in time order: the safety run of aircraft and beacons leads.
+  // A row's epoch is its fix time in whole seconds, never below it, so a row
+  // whole seconds behind the newest needs no parsing.
+  let newest = null;
+  let newestMs = -Infinity;
+  let newestSec = -Infinity;
+  for (const { last_position_UTC: at, last_position_epoch: epoch } of rows) {
+    if (!at || epoch < newestSec) continue;
+    const ms = Date.parse(at);
+    if (newest === null || ms > newestMs) {
+      newest = at;
+      newestMs = ms;
+      newestSec = Math.floor(ms / 1000);
+    }
+  }
+  return newest;
 }
 
 function stringValue(value) {
@@ -444,6 +487,13 @@ function normalizedHeading(value) {
 function normalizedSpeedOverGround(value) {
   const speed = numberValue(value);
   return speed !== null && speed >= 0 && speed < 102.3 ? speed : null;
+}
+
+// A SAR aircraft report (message 9) gives SOG in whole knots, where 1022
+// means "1022 knots or higher" and 1023 is "not available".
+function aircraftSpeedOverGround(value) {
+  const speed = numberValue(value);
+  return speed !== null && speed >= 0 && speed < 1023 ? speed : null;
 }
 
 /**

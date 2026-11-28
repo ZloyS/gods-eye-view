@@ -997,6 +997,68 @@ test('the globe satellite class bar identifies the subset it represents', async 
   assert.match(block.textContent, /Breakdown covers 2 of 5 loaded/);
 });
 
+test('each bar part has its own tone; only a folded tail is the grey Other', async (t) => {
+  // One ship of each of the seven vessel categories by its AIS type code.
+  const codes = ['80', '70', '60', '30', '52', '37', '90'];
+  const ships = codes.map((code, i) => ({
+    id: `ship-${i}`,
+    shipType: code,
+    mmsi: `36699910${i}`,
+    ...HERE,
+  }));
+  // Six satellite classes: four kept, the last two folded into an Other
+  // that is the largest part.
+  const satellites = ['Station', 'Weather', 'Navigation', 'Science']
+    .flatMap((name) => [name, name, name])
+    .concat(['Comms', 'Comms', 'Military', 'Military'])
+    .map((name, i) => ({ id: `sat-${i}`, satelliteClass: name, ...HERE }));
+  const { $, cards } = fixture(t, [
+    {
+      id: 'ais-live-vessels',
+      name: 'Vessels',
+      enabled: true,
+      records: ships,
+      stats: { count: ships.length },
+    },
+    {
+      id: 'satellites',
+      name: 'Satellites',
+      enabled: true,
+      records: satellites,
+      stats: { count: satellites.length },
+    },
+  ]);
+  cards.setView({ center: HERE, heightM: 20_000_000 });
+  await nextTick();
+  const tones = (layer, part) =>
+    [
+      ...$(`.view-context__block[data-layer="${layer}"]`).querySelectorAll(
+        part,
+      ),
+    ].map((node) => node.dataset.tone);
+  const seven = ['0', '1', '2', '3', '4', '5', '6'];
+  assert.deepEqual(
+    tones('ais-live-vessels', '.view-context__bar span').sort(),
+    seven,
+  );
+  assert.deepEqual(
+    tones('ais-live-vessels', '.view-context__bar-key span').sort(),
+    seven,
+  );
+  const keyed = $(
+    '.view-context__block[data-layer="satellites"] .view-context__bar-key span',
+  );
+  assert.match(keyed.textContent, /Other 4/);
+  assert.equal(keyed.dataset.tone, 'other');
+  assert.deepEqual(tones('satellites', '.view-context__bar span'), [
+    'other',
+    '0',
+    '1',
+    '2',
+    '3',
+  ]);
+});
+
 test('the incident locator shows its state alongside its place rows at globe height', async (t) => {
   const locator = {
     id: 'bhote-koshi-locator',

@@ -61,12 +61,18 @@ export function createSelection({
           : null;
         const carded = id ? state.records.byId.get(id) || null : null;
         // A stale card id is not empty terrain and must not clear a newer
-        // selection. The next paint will evict its hit rectangle.
-        if (carded) clickVessel(carded);
+        // selection. The next paint will evict its hit rectangle. A card of a
+        // hidden category's vessel does nothing either.
+        if (carded && components.rendering.categoryShown(carded))
+          clickVessel(carded);
         return;
       }
       const pickedId = event.id;
-      const record = pickedId ? state.records.byId.get(pickedId) : null;
+      const picked = pickedId ? state.records.byId.get(pickedId) : null;
+      // A hidden category's vessel draws nothing to click: its pick is a
+      // no-op, as a row without a record is.
+      const record =
+        picked && components.rendering.categoryShown(picked) ? picked : null;
       // A vessel icon's pick is an item of the layer's icon set, whose id is
       // its row id: the record's id, or an unkeyed row's. Removing a row
       // removes its item, so an evicted vessel cannot be picked at all; a

@@ -318,6 +318,18 @@ const OPTION_GROUPS = Object.freeze({
       },
     ),
   ]),
+  // Vessel category toggles: every category shown. The keys mirror VESSEL_CATEGORIES in vesselTypes.js
+  // (pinned by the vessel category tests); spelled out here because this
+  // file runs in isolation in the token-ledger tests.
+  'ais-live-vessels': Object.freeze([
+    booleanOption('tankers', 't', true),
+    booleanOption('cargo', 'c', true),
+    booleanOption('passenger', 'p', true),
+    booleanOption('fishing', 'f', true),
+    booleanOption('service', 's', true),
+    booleanOption('leisure', 'l', true),
+    booleanOption('other', 'x', true),
+  ]),
   // Active Fires intensity filter (HAL-676). `minFrp` is whole megawatts on
   // the codec side; the panel's log slider rounds to it. Both default to
   // "show everything": many of the strongest fires are rated low confidence.
@@ -645,7 +657,8 @@ export const LAYER_STATE_REGISTRY = Object.freeze([
   Object.freeze({
     id: 'ais-live-vessels',
     token: 'a',
-    disposition: 'enabled-only',
+    disposition: 'enabled+options',
+    optionOwner: 'ais-live-vessels',
   }),
   Object.freeze({
     id: 'alpr-cameras',

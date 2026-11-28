@@ -12,7 +12,9 @@
  * length over the model's built length is its scale.
  *
  * An aid to navigation (a buoy, beacon, mark, RACON or light) is drawn as
- * the set's buoy of its IALA mark, by the mark its type names.
+ * the set's buoy of its IALA mark, by the mark its type names; an offshore
+ * platform as its jacket, unless an aid report names it, and a distress
+ * beacon as the small red can.
  *
  * The resolvers are plain functions over the parsed JSON; `loadFleetModelSet`
  * fetches the JSON and every GLB once, up front, so no model is fetched
@@ -22,7 +24,7 @@
 import { classifyAircraft } from './aircraftClass.js';
 import { readPartTable } from '../render/modelParts.js';
 import { FLEET_TRAIL_ANCHORS } from './fleetTrailAnchors.js';
-import { isAidToNavigation } from './vesselTypes.js';
+import { isPlatformAid, nonVesselKind } from './vesselTypes.js';
 
 /** Where the model set is served, relative to the application base. */
 export const FLEET_MODEL_BASE = '/models/fleet/';
@@ -104,7 +106,7 @@ const AID_MODELS = [
   [/safe water/i, 'buoy_safe_water'],
   [/port hand/i, 'buoy_lateral_port'],
   [/starboard hand/i, 'buoy_lateral_starboard'],
-  [/special mark|light vessel|lanby/i, 'buoy_special'],
+  [/special mark|lightship|light[- ]?vessel|lanby/i, 'buoy_special'],
   [
     /^(beacon|light\b|leading light|racon|reference point|navigation aid)/i,
     'buoy_special',
@@ -113,6 +115,22 @@ const AID_MODELS = [
 
 /** The buoy an aid to navigation whose type names no mark is drawn as. */
 export const DEFAULT_AID_MODEL = 'can_red';
+
+/**
+ * The model each other fixed mark is drawn with ({@link nonVesselKind}): an
+ * offshore platform its jacket, a distress beacon the small red can.
+ */
+const MARK_MODELS = Object.freeze({
+  platform: 'offshore_platform',
+  beacon: 'can_red',
+});
+
+/**
+ * The model of a platform an aid report names (types 3 and 31,
+ * {@link isPlatformAid}): those also mark wind-farm turbines and
+ * substations, so the special-mark buoy rather than the jacket.
+ */
+const PLATFORM_AID_MODEL = 'buoy_special';
 
 /**
  * The buoy model of an aid to navigation's type, else undefined when the
@@ -441,24 +459,47 @@ export function aircraftModelSpec(
 /**
  * The model a vessel is drawn with, from its AIS ship type (a code or a text
  * family), reported length and beam (metres) and name. An aid to navigation
- * ({@link isAidToNavigation}: its type names a buoy, beacon, mark, RACON or
+ * ({@link nonVesselKind}: its type names a buoy, beacon, mark, RACON or
  * light, or its MMSI is an aid's) is the buoy of its mark
  * ({@link aidToNavigationModel}), else {@link DEFAULT_AID_MODEL}, drawn as
- * built and flagged `fixed`: it has no heading to turn to. A virtual aid
- * (`virtual`) is broadcast where nothing physical stands, so it has no model.
+ * built and flagged `fixed`: it has no heading to turn to. So is an offshore
+ * platform, as its jacket ({@link PLATFORM_AID_MODEL} when an aid report
+ * names it), and a distress beacon, as the small red can
+ * ({@link MARK_MODELS}); either has none when the catalog lacks it. A
+ * virtual aid or platform (`virtual`) is broadcast where nothing physical
+ * stands, so it has no model; nor has a station or search-and-rescue
+ * aircraft ({@link nonVesselKind}): no ship model is one.
  * @param {{catalog: object, types: object}} set
- * @param {{type?: string|number|null, mmsi?: string|number|null,
+ * @param {{type?: string|number|null, typeBroad?: string|null,
+ *   mmsi?: string|number|null, destination?: string|null,
  *   virtual?: boolean, length?: number|null, beam?: number|null,
  *   name?: string|null}} vessel
- * @returns {object|null} {@link fleetModelSpec}, with `fixed` for an aid;
- *   null for a virtual aid
+ * @returns {object|null} {@link fleetModelSpec}, with `fixed` for a fixed
+ *   mark and `grounded` for the jacket; null for a virtual aid and for a
+ *   station or SAR aircraft
  */
 export function vesselModelSpec(
   set,
-  { type, mmsi, virtual, length, beam, name } = {},
+  { type, typeBroad, mmsi, destination, virtual, length, beam, name } = {},
 ) {
   if (virtual === true) return null;
-  if (isAidToNavigation({ type, mmsi })) {
+  const mark = nonVesselKind({ type, typeBroad, mmsi, destination });
+  if (Object.hasOwn(MARK_MODELS, mark)) {
+    const model =
+      mark === 'platform' && isPlatformAid(type)
+        ? PLATFORM_AID_MODEL
+        : MARK_MODELS[mark];
+    if (!set.catalog[model]) return null;
+    // The jacket stands on the seabed: no sea surface lifts or tilts it.
+    const grounded = model === MARK_MODELS.platform ? { grounded: true } : {};
+    return Object.freeze({
+      ...fleetModelSpec(set, model, null),
+      fixed: true,
+      ...grounded,
+    });
+  }
+  if (mark !== null && mark !== 'aid') return null;
+  if (mark === 'aid') {
     const model = aidToNavigationModel(type);
     const known = model && set.catalog[model] ? model : DEFAULT_AID_MODEL;
     if (set.catalog[known])

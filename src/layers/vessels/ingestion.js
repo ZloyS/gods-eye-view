@@ -306,6 +306,7 @@ export function createIngestion({
       name: record.name,
       imo: record.imo,
       type: record.type,
+      typeBroad: record.typeBroad ?? '',
       destination: record.destination,
       length: record.lengthM ?? null,
       beam: record.beamM ?? null,

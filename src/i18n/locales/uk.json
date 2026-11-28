@@ -4750,5 +4750,16 @@
   "Reference monitor": "Еталонний прилад",
   "Needs {envVars} — add one in Provider Settings": "Потрібен {envVars} — додайте будь-який із них у «Налаштуваннях постачальників»",
   "CABLE \u00b7 {name}": "КАБЕЛЬ · {name}",
-  "LANDING POINT \u00b7 {name}": "ТОЧКА ВИХОДУ НА БЕРЕГ · {name}"
+  "LANDING POINT \u00b7 {name}": "ТОЧКА ВИХОДУ НА БЕРЕГ · {name}",
+  "COAST STATION": "БЕРЕГОВА СТАНЦІЯ",
+  "SAR AIRCRAFT": "ПОШУКОВО-РЯТУВАЛЬНЕ ПС",
+  "DISTRESS BEACON": "АВАРІЙНИЙ РАДІОБУЙ",
+  "PLATFORM": "ПЛАТФОРМА",
+  "vessel category|Tankers": "Танкери",
+  "vessel category|Cargo": "Вантажні",
+  "vessel category|Passenger": "Пасажирські",
+  "vessel category|Fishing": "Рибальські",
+  "vessel category|Service": "Службові",
+  "vessel category|Leisure": "Прогулянкові",
+  "vessel category|Other": "Інші"
 }

@@ -96,7 +96,10 @@ export interface FleetAircraft {
 /** What picks a vessel's model. */
 export interface FleetVessel {
   type?: string | number | null;
+  /** The broad type beside a detailed `type`. */
+  typeBroad?: string | null;
   mmsi?: string | number | null;
+  destination?: string | null;
   virtual?: boolean;
   length?: number | null;
   beam?: number | null;
@@ -273,16 +276,42 @@ export const VESSEL_SPRITE_PX: number;
 export function vesselSprite(kind: string): string;
 /** The buoy sprite of an aid to navigation, as an SVG data URI. */
 export function aidSprite(): string;
+/** The sprite of what is not a vessel, by its {@link NonVesselKind}. */
+export function nonVesselSprite(kind: NonVesselKind | string): string;
 
 export const VESSEL_KINDS: readonly string[];
 export const VESSEL_KIND_STYLES: Readonly<
   Record<string, { readonly css: string; readonly accent: string }>
 >;
-export function isAidToNavigation(vessel?: {
+/** What a vessel record names to be classed by. */
+export interface VesselIdentity {
   type?: string | number | null;
+  typeBroad?: string | null;
   mmsi?: string | number | null;
+  destination?: string | null;
   virtual?: boolean;
-}): boolean;
+}
+/** What a vessel record is when it is not a vessel. */
+export type NonVesselKind =
+  | 'aid'
+  | 'station'
+  | 'platform'
+  | 'aircraft'
+  | 'beacon';
+/** The functional categories a vessel layer shows or hides, in panel order. */
+export const VESSEL_CATEGORIES: readonly string[];
+/** Each category shown or not by default: every one shown. */
+export const DEFAULT_VESSEL_CATEGORY_VISIBILITY: Readonly<
+  Record<string, boolean>
+>;
+export function isAidToNavigation(vessel?: VesselIdentity): boolean;
+/** Whether a record is a vessel: not an aid, station, platform, aircraft or beacon. */
+export function isVessel(vessel?: VesselIdentity): boolean;
+export function nonVesselKind(vessel?: VesselIdentity): NonVesselKind | null;
+/** An MMSI as its nine digits, with the leading zeros a number lost. */
+export function normalizeMmsi(mmsi: string | number | null | undefined): string;
+/** The functional category of a vessel record, one of VESSEL_CATEGORIES. */
+export function vesselCategory(vessel?: VesselIdentity): string;
 export function normalizeVesselType(
   type: string | number | null | undefined,
 ): string;

@@ -15,6 +15,8 @@
  * only has MMSIs uses the MMSI as the id. A vessel record's `virtual` is true
  * for a virtual aid to navigation, a mark broadcast where nothing physical
  * stands (AIS message 21's virtual flag), else false; any source may set it.
+ * Its `type` is the most detailed type the source gives, and `typeBroad`
+ * the broad type beside it ('' or absent when the source gives one only).
  *
  * A source may also declare a timeline (see readSnapshotTimeline): it can
  * answer a snapshot at a given time, so the layer follows the world clock.

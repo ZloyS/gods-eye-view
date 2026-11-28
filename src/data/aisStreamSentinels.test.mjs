@@ -23,6 +23,19 @@ const positionReport = (mmsi, body) => ({
   },
 });
 
+const sarAircraftReport = (mmsi, body) => ({
+  MessageType: 'StandardSearchAndRescueAircraftReport',
+  Message: {
+    StandardSearchAndRescueAircraftReport: { UserID: Number(mmsi), ...body },
+  },
+  MetaData: {
+    MMSI: mmsi,
+    latitude: 53.40879,
+    longitude: 6.19741,
+    time_utc: '2026-09-17 20:00:00.000000000 +0000 UTC',
+  },
+});
+
 const rowFor = (mmsi) => aisStreamRows(50000).find((row) => row.mmsi === mmsi);
 
 test('speed over ground reported as unavailable is unknown, not 102.3 knots', () => {
@@ -64,6 +77,18 @@ test('the fastest encodable reading below the unavailable code is kept', () => {
   const row = rowFor('244060366');
   assert.equal(row.speed, 102.2);
   assert.equal(row.course, 359.9);
+});
+
+test('a SAR aircraft keeps a whole-knot speed above 102.2 knots; 1023 is unknown', () => {
+  ingestAisStreamEnvelope(
+    sarAircraftReport('111244100', { Sog: 140, Cog: 90 }),
+  );
+  assert.equal(rowFor('111244100').speed, 140);
+  assert.equal(rowFor('111244100').course, 90);
+  ingestAisStreamEnvelope(
+    sarAircraftReport('111244101', { Sog: 1023, Cog: 90 }),
+  );
+  assert.equal(rowFor('111244101').speed, null);
 });
 
 test('a static data report keeps the motion and fix time of a tracked vessel', () => {

@@ -220,3 +220,118 @@ test('static entries that never get a position are capped in order of first arri
   assert.equal(rowFor(mmsiAt(3)).type, '');
   assert.equal(rowFor(mmsiAt(AISSTREAM_CACHE_MAX)).type, '70');
 });
+
+test('an MMSI AISStream sends as a number keeps its leading zeros', (t) => {
+  useClock(t);
+  store.pruneAisStreamCache();
+  // A coast station, 00MIDxxxx: as a number it has seven digits.
+  position(2442234);
+  position('211000009');
+  const station = rowFor('002442234');
+  assert.ok(station, 'stored under its nine digits');
+  assert.equal(rowFor('2442234'), undefined);
+  // The station is not a vessel: it is listed after every ship and not
+  // counted as one.
+  assert.deepEqual(
+    rows().map((row) => row.mmsi),
+    ['211000009', '002442234'],
+  );
+  // Heard on the worldwide subscription, it is still no vessel to count.
+  store.ingestAisStreamEnvelope(
+    {
+      MessageType: 'PositionReport',
+      Message: { PositionReport: { UserID: 2442234, Sog: 0, Cog: 0 } },
+      MetaData: {
+        MMSI: 2442234,
+        latitude: 53.4,
+        longitude: 6.2,
+        time_utc: new Date(now).toISOString(),
+      },
+    },
+    true,
+  );
+  assert.equal(store.aisStreamVesselCount(), null);
+  // Its track is found by either spelling.
+  assert.deepEqual(
+    store.readAisTrack(2442234),
+    store.readAisTrack('002442234'),
+  );
+});
+
+test('the newest position time is the newest row, not an old beacon at the head', (t) => {
+  useClock(t);
+  position('974123456');
+  now += 20 * 60_000;
+  position(mmsiAt(1));
+  position(mmsiAt(2));
+  const current = rows();
+  // The distress beacon leads the rows although it is the oldest fix.
+  assert.equal(current[0].mmsi, '974123456');
+  assert.equal(store.newestAisPositionAt(current), new Date(now).toISOString());
+  assert.equal(store.newestAisPositionAt([]), null);
+  // A later millisecond wins, in the same second as an earlier row or not.
+  now += 400;
+  position(mmsiAt(3));
+  assert.equal(store.newestAisPositionAt(rows()), new Date(now).toISOString());
+});
+
+test('a one-row request gives its row to a ship, not a beacon', (t) => {
+  useClock(t);
+  position(mmsiAt(1));
+  now += 1000;
+  position('974123457');
+  assert.deepEqual(
+    store.aisStreamRows(1).map((row) => row.mmsi),
+    [mmsiAt(1)],
+  );
+});
+
+test('a static report that changes what a row is moves it to its run, and the run never reaches the output', (t) => {
+  useClock(t);
+  const worldwide = (mmsi) =>
+    store.ingestAisStreamEnvelope(
+      {
+        MessageType: 'PositionReport',
+        Message: { PositionReport: { UserID: Number(mmsi), Sog: 10, Cog: 90 } },
+        MetaData: {
+          MMSI: mmsi,
+          latitude: 53.4,
+          longitude: 6.2,
+          time_utc: new Date(now).toISOString(),
+        },
+      },
+      true,
+    );
+  const order = () => rows().map((row) => row.mmsi);
+  const noInternalFields = () =>
+    rows().every(
+      (row) =>
+        !('_kind' in row) && !('_updatedAt' in row) && !('_worldwide' in row),
+    );
+
+  worldwide(mmsiAt(10));
+  now += 1000;
+  worldwide(mmsiAt(11));
+  assert.deepEqual(
+    store.aisStreamRows(2).map((row) => row.mmsi),
+    [mmsiAt(11), mmsiAt(10)],
+  );
+  assert.equal(store.aisStreamVesselCount().count, 2);
+  assert.ok(noInternalFields());
+
+  // No type, so this destination makes the row a platform.
+  staticData(mmsiAt(11), { Destination: 'STEADY OBJECT' });
+  assert.deepEqual(order(), [mmsiAt(10), mmsiAt(11)]);
+  assert.deepEqual(
+    store.aisStreamRows(1).map((row) => row.mmsi),
+    [mmsiAt(10)],
+  );
+  assert.equal(store.aisStreamVesselCount().count, 1);
+  assert.ok(noInternalFields());
+
+  // A ship-type code makes it a vessel again.
+  staticData(mmsiAt(11), { Type: 70 });
+  assert.deepEqual(order(), [mmsiAt(11), mmsiAt(10)]);
+  assert.equal(store.aisStreamVesselCount().count, 2);
+  assert.ok(noInternalFields());
+});

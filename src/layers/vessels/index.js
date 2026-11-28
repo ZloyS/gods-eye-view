@@ -11,6 +11,7 @@ import { createPhotos } from './photos.js';
 import { createTesting } from './testing.js';
 import { createEvidence } from './evidence.js';
 import { createQueries } from './queries.js';
+import { createControls } from './controls.js';
 import { followsClock } from './policy.js';
 import {
   createSnapshotTimeline,
@@ -32,6 +33,7 @@ export function createVesselLayer({ source, services, options = {} } = {}) {
   parts.testing = createTesting(context);
   parts.evidence = createEvidence(context);
   parts.queries = createQueries(context);
+  parts.controls = createControls(context);
   parts.snapshots = createVesselSnapshotRenderer({
     state: vesselState.state,
     placement: services?.placement ?? null,
@@ -88,6 +90,7 @@ export function createVesselLayer({ source, services, options = {} } = {}) {
     parts.queries.methods,
     parts.lifecycle.methods,
     parts.ingestion.methods,
+    parts.controls.methods,
   );
   layer.source = source?.label || 'Vessels';
   Object.assign(layer, {

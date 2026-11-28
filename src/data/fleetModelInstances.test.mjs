@@ -605,6 +605,44 @@ test('models float on a sea surface: raised by its height, tilted by its slope',
   layer.destroy();
 });
 
+test('a platform stands on the seabed, unmoved by the sea surface; a buoy floats', () => {
+  const wave = { heightM: 2, slope: { east: 0.1, north: -0.05 } };
+  const { layer, frame } = readyLayer({
+    display: { models3d: true },
+    waterline: true,
+    seaSurface: () => () => wave,
+  });
+  const platform = vesselModelSpec(set, { type: 'Offshore Platform' });
+  const buoy = vesselModelSpec(set, { type: 'Fixed structure off shore' });
+  assert.equal(platform.model, 'offshore_platform');
+  assert.equal(buoy.model, 'buoy_special');
+  const rig = itemAt(10, platform, { pickId: 'p', headingDeg: 0 });
+  const mark = itemAt(30, buoy, { pickId: 'b', headingDeg: 0 });
+  const models = frame(
+    new Map([
+      ['p', rig],
+      ['b', mark],
+    ]),
+    0,
+  );
+  const rise = (id, item) =>
+    toLonLatH(models.items.get(id).pos).height -
+    toLonLatH(item.position).height;
+
+  const stood = models.items.get('p');
+  assert.ok(Math.abs(rise('p', rig) - (platform.elevationM || 0)) < 1e-3);
+  assert.equal(stood.orientation.pitch, 0);
+  assert.equal(stood.orientation.roll, 0);
+
+  const floated = models.items.get('b');
+  assert.ok(Math.abs(rise('b', mark) - (buoy.elevationM || 0) - 2) < 1e-3);
+  const tilt = fleetModelTilt(0, wave.slope);
+  assert.equal(floated.orientation.pitch, tilt.pitch);
+  assert.equal(floated.orientation.roll, tilt.roll);
+  assert.ok(floated.orientation.pitch !== 0 || floated.orientation.roll !== 0);
+  layer.destroy();
+});
+
 test('without a sea surface models stand level, as before', () => {
   const { layer, frame } = readyLayer({
     display: { models3d: true },

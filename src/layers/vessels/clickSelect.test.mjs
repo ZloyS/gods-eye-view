@@ -92,6 +92,8 @@ function vesselsLayer(t) {
         drawnPositionNow: (record) =>
           fromDegrees(record.lon, record.lat, drawnHeightM),
         getVisual: (record) => ({ iconId: record.id }),
+        // Every category shown.
+        categoryShown: () => true,
       }),
       cards: part({ displayVesselName: (record) => record.name }),
       photos: part(),

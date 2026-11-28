@@ -1,7 +1,8 @@
 import { distance } from '../../geo/vector.js';
 import { t, msg } from '../../i18n/index.js';
 import { vesselCockpitInfo } from './cockpitSubject.js';
-import { vesselTypeCss } from '../../data/vesselLabels.js';
+import { NON_VESSEL_STYLES, vesselTypeCss } from '../../data/vesselLabels.js';
+import { nonVesselKind, normalizeMmsi } from '../../data/vesselTypes.js';
 import { greatCircleMeters } from '../../geoDistance.js';
 
 // ingestion.js is a portable export (package.json) and writes English labels
@@ -42,9 +43,19 @@ export function createQueries({
   const { state } = vesselState;
   const { formatKnots } = services.labels;
 
+  /** Whether the map shows `record`: its category is not hidden by the row's toggles. */
+  const shown = (record) => components.rendering.categoryShown(record);
+
+  /** A radar contact's colour: what it is when it is not a vessel, else its ship type's. */
+  function radarColor(record) {
+    const mark = nonVesselKind(record);
+    return mark ? NON_VESSEL_STYLES[mark].css : vesselTypeCss(record.type);
+  }
+
   /**
-   * The vessel keyed `id`, else the first whose MMSI is `id`: a link or a
-   * caller that names a vessel by its MMSI still finds it. A share link
+   * The vessel keyed `id`, else the first whose MMSI is `id`, both read as
+   * nine digits (`normalizeMmsi`): a link or a caller that names a vessel by
+   * its MMSI still finds it. A share link
    * carries a UUID key in lowercase, so a UUID matches in any case.
    * @param {string} id
    * @returns {object|null}
@@ -59,8 +70,11 @@ export function createQueries({
       return null;
     }
     if (!/^\d{1,10}$/.test(id)) return null;
+    // A link made before MMSIs were padded names a coast station or group by
+    // its seven or eight digits.
+    const wanted = normalizeMmsi(id);
     for (const candidate of state.records.byId?.values() ?? [])
-      if (candidate.mmsi === id) return candidate;
+      if (normalizeMmsi(candidate.mmsi) === wanted) return candidate;
     return null;
   }
 
@@ -115,6 +129,29 @@ export function createQueries({
       object.metric = formatKnots(record.speed); // record.speed is knots
     }
     return object;
+  }
+
+  /**
+   * The layer's count: the feed's, less the records of hidden categories
+   * (the row's toggles), which the map does not show. Read from the last
+   * visibility pass's tally; records it did not count are walked.
+   * @returns {number}
+   */
+  function shownCount() {
+    const categories = vesselState.categories;
+    if (!Object.values(categories).includes(false)) return state.feed.count;
+    let count = 0;
+    let tallied = 0;
+    for (const [category, n] of vesselState.categoryCounts) {
+      tallied += n;
+      if (categories[category] !== false) count += n;
+    }
+    if (tallied !== state.records.all.length) {
+      count = 0;
+      for (const record of state.records.all)
+        if (components.rendering.categoryShown(record)) count += 1;
+    }
+    return Math.min(count, state.feed.count);
   }
 
   /**
@@ -258,8 +295,8 @@ export function createQueries({
    * @returns {{id: string|null, vesselId: string|null, mmsi: string|null,
    *   name: string|null,
    *   lat: number|null, lon: number|null, speedKts: number|null,
-   *   courseDeg: number|null, shipType: string|null, destination: string|null,
-   *   navStatus: null}}
+   *   courseDeg: number|null, shipType: string|null, typeBroad: string|null,
+   *   destination: string|null, virtual: boolean, navStatus: null}}
    */
 
   function mapAnalystRecord(record) {
@@ -283,7 +320,10 @@ export function createQueries({
       speedKts: num(record?.speed),
       courseDeg: num(record?.course),
       shipType: text(record?.type),
+      // With the MMSI and destination, what its category is read from.
+      typeBroad: text(record?.typeBroad),
       destination: text(record?.destination),
+      virtual: record?.virtual === true,
       navStatus: null,
     };
   }
@@ -363,6 +403,7 @@ export function createQueries({
     /**
      * Find a vessel by its exact id, exact MMSI or case-insensitive name
      * substring. Vessels can share an MMSI; the first that has it is found.
+     * A vessel of a hidden category is not found.
      * @param {string|number} query Vessel id, MMSI or partial vessel name.
      * @returns {{ id: string, mmsi: string, name: string, position: {x: number, y: number, z: number}, latitude: number, longitude: number, speedKt: number|null, course: number|null, type: string }|null}
      */
@@ -374,16 +415,19 @@ export function createQueries({
       if (!q) return null;
 
       let record = state.records.byId.get(q) || null;
+      if (record && !shown(record)) record = null;
       if (!record && /^\d+$/.test(q)) {
-        record = records.find((r) => r.mmsi === q) || null;
+        record = records.find((r) => r.mmsi === q && shown(r)) || null;
       }
       if (!record) {
         const lower = q.toLowerCase();
         record =
-          records.find((r) =>
-            String(r.name || '')
-              .toLowerCase()
-              .includes(lower),
+          records.find(
+            (r) =>
+              shown(r) &&
+              String(r.name || '')
+                .toLowerCase()
+                .includes(lower),
           ) || null;
       }
       if (!record) return null;
@@ -422,6 +466,7 @@ export function createQueries({
       for (const record of records) {
         if (!Number.isFinite(record.lat) || !Number.isFinite(record.lon))
           continue;
+        if (!components.rendering.categoryShown(record)) continue;
         const position = components.rendering.drawnPositionNow(record);
         if (!position) continue;
         const distanceM = distance(centerCartesian, position);
@@ -439,7 +484,8 @@ export function createQueries({
     },
 
     /**
-     * Vessels around a point for the Cockpit bridge radar, nearest first.
+     * Vessels the map shows around a point for the Cockpit bridge radar,
+     * nearest first.
      * The ship whose bridge the Cockpit occupies is left out. Distances are
      * great-circle from the AIS positions, so no rendered visual is needed.
      * @param {number} lat Latitude of the centre, degrees.
@@ -469,6 +515,7 @@ export function createQueries({
       const entries = [];
       records.forEach((record, index) => {
         if (subject && String(record.id) === subject) return;
+        if (!shown(record)) return;
         const distanceM = greatCircleMeters(center, {
           lat: record.lat,
           lon: record.lon,
@@ -486,7 +533,7 @@ export function createQueries({
         course: finite(record.course),
         heading: finite(record.heading),
         type: String(record.type || ''),
-        color: vesselTypeCss(record.type),
+        color: radarColor(record),
         stale: (record.missedRefreshes || 0) > 0,
       }));
     },
@@ -527,6 +574,7 @@ export function createQueries({
 
       for (const record of records) {
         if (result.length >= cap) break;
+        if (!components.rendering.categoryShown(record)) continue;
         const position = components.rendering.drawnPositionNow(record);
         if (!position) continue;
         result.push({
@@ -558,6 +606,8 @@ export function createQueries({
       const result = [];
       for (const record of records) {
         if (result.length >= limit) break;
+        // The vessels the map shows: a hidden category is left out.
+        if (!components.rendering.categoryShown(record)) continue;
         result.push(mapAnalystRecord(record));
       }
       return result;
@@ -578,12 +628,13 @@ export function createQueries({
      * @param {string|number} id Vessel id.
      * @param {{center?: boolean}} [options] `center: false` selects it and
      *   leaves the camera to the caller (a pick from a list frames it).
-     * @returns {boolean} True if a matching vessel was selected.
+     * @returns {boolean} True if a matching vessel was selected; false for a
+     *   vessel of a hidden category.
      */
     pickById(id, { center = true } = {}) {
       if (id === null || id === undefined) return false;
       const record = recordFor(String(id).trim());
-      if (!record || !state.feed.enabled) return false;
+      if (!record || !state.feed.enabled || !shown(record)) return false;
       if (center) return components.selection.selectAndFocusVessel(record);
       if (state.selectedRecord?.id !== record.id)
         components.selection.selectVessel(record);
@@ -594,14 +645,15 @@ export function createQueries({
      * Select a vessel by id via the same path as a map click
      * (highlight + HUD update). An AIS feed's vessels are keyed by MMSI.
      * @param {string|number} id Vessel id.
-     * @returns {boolean} True if a matching vessel was selected.
+     * @returns {boolean} True if a matching vessel was selected; false for a
+     *   vessel of a hidden category.
      */
     selectById(id) {
       if (id === null || id === undefined) return false;
       const target = String(id).trim();
       if (!target) return false;
       const record = recordFor(target);
-      if (!record) return false;
+      if (!record || !shown(record)) return false;
       components.selection.selectVessel(record);
       return true;
     },
@@ -611,12 +663,13 @@ export function createQueries({
      * "track"): selected as a click selects it, then followed where the
      * layer draws it. The one already followed stays followed.
      * @param {string|number} id Vessel id.
-     * @returns {boolean} True if the camera follows the vessel.
+     * @returns {boolean} True if the camera follows the vessel; false for a
+     *   vessel of a hidden category.
      */
     trackById(id) {
       if (id === null || id === undefined || !state.feed.enabled) return false;
       const record = recordFor(String(id).trim());
-      if (!record) return false;
+      if (!record || !shown(record)) return false;
       if (state.selectedRecord?.id !== record.id)
         components.selection.selectVessel(record);
       return components.selection.followSelected();
@@ -713,6 +766,11 @@ export function createQueries({
       const next = normalizeSelectionId(id);
       if (state.cockpitSubjectId === next) return true;
       state.cockpitSubjectId = next;
+      // Let go by the bridge, a ship whose category was hidden during the ride
+      // lets its selection go, as hiding its category does (controls.js).
+      const selected = state.selectedRecord;
+      if (selected && selected.id !== next && !shown(selected))
+        components.selection.clearVesselInspection();
       // The ridden ship's trail runs from under the eye: hidden, its history
       // kept, while the bridge holds the ship it belongs to.
       state.trail?.setVisible?.(!next || next !== state.trailId);
@@ -814,7 +872,7 @@ export function createQueries({
       const waitingForFirstPosition =
         state.feed.firstConnectPhase === 'loading';
       return {
-        count: state.feed.count,
+        count: shownCount(),
         lastUpdate: state.feed.lastUpdate,
         loading: state.feed.loading || waitingForFirstPosition,
         loadingLabel: waitingForFirstPosition

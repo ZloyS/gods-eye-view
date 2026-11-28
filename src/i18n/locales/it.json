@@ -4645,5 +4645,16 @@
   "Reference monitor": "Strumento di riferimento",
   "Needs {envVars} — add one in Provider Settings": "Richiede {envVars}: aggiungine una in Impostazioni provider",
   "CABLE \u00b7 {name}": "CAVO · {name}",
-  "LANDING POINT \u00b7 {name}": "PUNTO DI APPRODO · {name}"
+  "LANDING POINT \u00b7 {name}": "PUNTO DI APPRODO · {name}",
+  "COAST STATION": "STAZIONE COSTIERA",
+  "SAR AIRCRAFT": "AEROMOBILE SAR",
+  "DISTRESS BEACON": "RADIOBOA DI SOCCORSO",
+  "PLATFORM": "PIATTAFORMA",
+  "vessel category|Tankers": "Petroliere",
+  "vessel category|Cargo": "Mercantili",
+  "vessel category|Passenger": "Passeggeri",
+  "vessel category|Fishing": "Pescherecci",
+  "vessel category|Service": "Ausiliarie",
+  "vessel category|Leisure": "Diportisti",
+  "vessel category|Other": "Altre"
 }

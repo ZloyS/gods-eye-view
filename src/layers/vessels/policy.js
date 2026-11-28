@@ -1,5 +1,32 @@
 import { VESSEL_LABEL_GRID_PX } from '../../data/vesselLabels.js';
+import {
+  DEFAULT_VESSEL_CATEGORY_VISIBILITY,
+  VESSEL_CATEGORIES,
+} from '../../data/vesselTypes.js';
 import { msg } from '../../i18n/index.js';
+
+export { VESSEL_CATEGORY_LABELS } from '../../data/vesselCategoryLabels.js';
+
+/**
+ * Normalise requested category toggles against the current ones. Unknown
+ * keys are ignored and non-boolean values keep the current setting, so a
+ * malformed share link can hide nothing it did not name.
+ * @param {Record<string, unknown>} params
+ * @param {Record<string, boolean>} [current]
+ * @returns {Record<string, boolean>}
+ */
+export function normalizeVesselCategories(
+  params,
+  current = DEFAULT_VESSEL_CATEGORY_VISIBILITY,
+) {
+  const next = {};
+  for (const category of VESSEL_CATEGORIES)
+    next[category] =
+      typeof params?.[category] === 'boolean'
+        ? params[category]
+        : current[category] !== false;
+  return next;
+}
 
 export const FOCUS_EVIDENCE_DEV = import.meta.env?.DEV === true;
 

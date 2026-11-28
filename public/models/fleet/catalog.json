@@ -1679,6 +1679,26 @@
   "icon": "light",
   "parts": 13
  },
+ "offshore_platform": {
+  "category": "other",
+  "file": "other/offshore_platform.glb",
+  "min": [
+   -29.393,
+   -37.926,
+   -20.222
+  ],
+  "max": [
+   37.926,
+   29.393,
+   50.844
+  ],
+  "length": 67.319,
+  "beam": 67.319,
+  "clearance": 20.222,
+  "tris": 1016,
+  "icon": "platform",
+  "parts": 1
+ },
  "p28a": {
   "category": "aircraft",
   "file": "aircraft/p28a.glb",

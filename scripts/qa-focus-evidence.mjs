@@ -442,7 +442,7 @@ async function vesselRowsAroundTarget(page) {
       const lon = carto.longitude * 180 / Math.PI
         + eastM / (111_320 * Math.cos(carto.latitude));
       rows.push({
-        mmsi: String(990000000 + i),
+        mmsi: String(244980000 + i),
         name: `HARBOR ${String(i + 1).padStart(2, '0')}`,
         lat,
         lon,

@@ -1784,5 +1784,8 @@
   "src/layers/flights/clickSelect.test.mjs",
   "src/layers/satellites/clickSelect.test.mjs",
   "src/layers/vessels/clickSelect.test.mjs",
+  "src/layers/vessels/categories.test.mjs",
+  "src/layers/vessels/categoryCounts.test.mjs",
+  "src/data/vesselCategoryLabels.js",
   "src/layers/transit/clickSelect.test.mjs"
 ]

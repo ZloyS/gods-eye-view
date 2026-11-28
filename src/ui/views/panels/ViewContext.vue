@@ -362,8 +362,9 @@ const countStatus = (tile) => {
 };
 const countText = (tile) => countStatus(tile) || (tile.count === null ? '…' : formatNumber(tile.count));
 // At globe view each layer's block splits its count by kind (airliners,
-// military, cargo; container ships, tankers), with a label for each segment.
-const BAR_SPLITS = ['Type', 'Class', 'Magnitude', 'Mode'];
+// military, cargo; tankers, fishing), with a label for each segment. Vessels
+// show their filter categories, the same groups and counts as their chips.
+const BAR_SPLITS = ['Category', 'Type', 'Class', 'Magnitude', 'Mode'];
 // Splitting a layer reads every record it holds (a satellite catalogue is
 // propagated to do it), so reuse the bar for 30 s while its count holds.
 const BAR_KEEP_MS = 30_000;
@@ -383,16 +384,22 @@ function splitBar(found) {
   const split = BAR_SPLITS.map((title) => usable.find((one) => one.title === title)).find(Boolean) || usable[0];
   if (!split) return null;
   const total = split.parts.reduce((sum, part) => sum + part.count, 0);
+  // A folded tail ("Other" without a category context) is the grey part;
+  // every other part takes the next colour (entity-card.css has 0–6).
+  let colour = 0;
   return {
     total,
-    parts: split.parts.map((part, index) => ({
+    parts: split.parts.map((part) => ({
       label: part.label,
+      context: part.context,
       count: part.count,
       share: part.count / total,
-      tone: index,
+      tone: part.label === 'Other' && !part.context ? 'other' : colour++,
     })),
   };
 }
+/** A split part's words; a part with a context (vessel categories) is worded by it. */
+const partLabel = (part) => t(part.label, part.context && { context: part.context });
 const listFormatter = computed(() => new Intl.ListFormat(getLocale(), { type: 'unit' }));
 function listOf(parts) {
   try {
@@ -645,11 +652,11 @@ function openSuggested() {
           </div>
           <p v-if="tile.id === 'traffic' && Number.isFinite(tile.count) && !countStatus(tile)" class="view-context__count-unit">{{ t('Loaded traffic dots') }}</p>
           <template v-if="tile.bar">
-            <div class="view-context__bar" role="img" :aria-label="listOf(tile.bar.parts.map((part) => `${t(part.label)} ${formatNumber(part.count)}`))">
+            <div class="view-context__bar" role="img" :aria-label="listOf(tile.bar.parts.map((part) => `${partLabel(part)} ${formatNumber(part.count)}`))">
               <span v-for="part in tile.bar.parts" :key="part.label" :data-tone="part.tone" :style="{ flexGrow: part.share }"></span>
             </div>
             <p class="view-context__bar-key">
-              <span v-for="part in tile.bar.parts" :key="part.label" :data-tone="part.tone">{{ t(part.label) }} {{ formatNumber(part.count) }}</span>
+              <span v-for="part in tile.bar.parts" :key="part.label" :data-tone="part.tone">{{ partLabel(part) }} {{ formatNumber(part.count) }}</span>
             </p>
             <p v-if="tile.id === 'satellites' && tile.bar.total !== tile.count" class="view-context__bar-key">
               {{ t('Breakdown covers {n} of {total} loaded', { n: formatNumber(tile.bar.total), total: formatNumber(tile.count) }) }}

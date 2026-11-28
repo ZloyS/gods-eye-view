@@ -2,7 +2,8 @@
  * @module vesselSprites
  * @description The map sprites of the vessel layer, as SVG data URIs: one hull
  * per vessel kind (`vesselKind` in vesselTypes.js), seen from above with its
- * bow up (north), and one buoy for every aid to navigation, standing upright.
+ * bow up (north); one buoy for every aid to navigation, standing upright,
+ * and the upright marks of a distress beacon and an offshore platform.
  *
  * Every sprite is white with dark detail, drawn on the 96-unit frame of
  * aircraftIcons.js (centre 48,48). The layer tints it at draw time (the
@@ -11,6 +12,8 @@
  * share one length and differ in shape only; widths are exaggerated so they
  * read at small sizes.
  */
+
+import { aircraftIcon } from './aircraftIcons.js';
 
 const VIEW = 96;
 const C = VIEW / 2;
@@ -130,6 +133,43 @@ const BUOY = `
     <path d="M-1.9,-22 h3.8 v4.5 h-3.8 Z" fill="white" ${EDGE}/>
     <circle cx="0" cy="-30" r="7" fill="white" ${EDGE}/>`;
 
+/**
+ * A distress beacon: the buoy with a flash ring of two arcs above its
+ * top-mark. The layer's tint turns it red.
+ */
+const BEACON = `${BUOY}
+    <g fill="none" stroke-linecap="round" opacity="0.85">
+      <path d="M-9.5,-35.5 A 11 11 0 0 1 9.5,-35.5
+               M-13.4,-37.8 A 15.5 15.5 0 0 1 13.4,-37.8"
+            stroke="rgba(4,18,24,0.9)" stroke-width="4.2"/>
+      <path d="M-9.5,-35.5 A 11 11 0 0 1 9.5,-35.5
+               M-13.4,-37.8 A 15.5 15.5 0 0 1 13.4,-37.8"
+            stroke="white" stroke-width="2.1"/>
+    </g>`;
+
+/**
+ * An offshore platform, seen from the side: a deck slab on four legs that
+ * splay out to a dark waterline band, cross-braced, with a module box and a
+ * crane whose boom reaches up from the deck's right end. Never turned.
+ */
+const PLATFORM = `
+    <path d="M-23,0 L -9,24 M-9,0 L -23,24 M-7,0 L 7,24 M7,0 L -7,24
+             M9,0 L 23,24 M23,0 L 9,24" fill="none"
+          stroke="rgba(4,18,24,0.9)" stroke-width="3.6"/>
+    <path d="M-23,0 L -9,24 M-9,0 L -23,24 M-7,0 L 7,24 M7,0 L -7,24
+             M9,0 L 23,24 M23,0 L 9,24" fill="none" stroke="white"
+          stroke-width="1.5"/>
+    <path d="M-26,-6 L -21,-6 L -25.5,32 L -31,32 Z M-10,-6 L -5,-6 L -6.5,32
+             L -12,32 Z M5,-6 L 10,-6 L 12,32 L 6.5,32 Z M21,-6 L 26,-6 L 31,32
+             L 25.5,32 Z" fill="white" ${EDGE}/>
+    <path d="M-35,32 h70 v3.4 h-70 Z" fill="rgba(4,18,24,0.7)"/>
+    <path d="M-30,-14 h60 v8 h-60 Z" fill="white" ${EDGE}/>
+    <path d="M-30,-11 h60 v2.2 h-60 Z" ${DETAIL}/>
+    <path d="M-21,-25 h18 v11 h-18 Z" fill="white" ${EDGE}/>
+    <path d="M-18,-22 h12 v2.6 h-12 Z" ${DETAIL}/>
+    <path d="M23.5,-17 L 37,-31.5 L 39.6,-29.4 L 26.6,-15.6 Z" fill="white" ${EDGE}/>
+    <path d="M20,-21 h6.5 v7 h-6.5 Z" fill="white" ${EDGE}/>`;
+
 const cache = new Map();
 
 const b64 = (s) =>
@@ -164,4 +204,37 @@ export function vesselSprite(kind) {
  */
 export function aidSprite() {
   return sprite('aid', BUOY);
+}
+
+/**
+ * The offshore platform sprite: a deck on legs, upright.
+ * @returns {string} SVG data URI.
+ */
+export function platformSprite() {
+  return sprite('platform', PLATFORM);
+}
+
+/**
+ * The distress beacon sprite: the buoy with a flash ring.
+ * @returns {string} SVG data URI.
+ */
+export function beaconSprite() {
+  return sprite('beacon', BEACON);
+}
+
+/**
+ * The sprite of a record that is not a vessel (`nonVesselKind` in
+ * vesselTypes.js): a station is the ground-station mast of aircraftIcons.js
+ * and a platform its deck on legs, both drawn upright; a search-and-rescue
+ * aircraft is a turboprop, turned with its course; a distress beacon is the
+ * buoy with a flash ring, and an aid to navigation the buoy.
+ * @param {string} kind `aid`, `station`, `platform`, `aircraft` or `beacon`.
+ * @returns {string} SVG data URI.
+ */
+export function nonVesselSprite(kind) {
+  if (kind === 'station') return aircraftIcon('station', VESSEL_SPRITE_PX);
+  if (kind === 'platform') return platformSprite();
+  if (kind === 'aircraft') return aircraftIcon('turboprop', VESSEL_SPRITE_PX);
+  if (kind === 'beacon') return beaconSprite();
+  return aidSprite();
 }

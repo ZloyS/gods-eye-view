@@ -24,6 +24,7 @@ import {
   transitModelSpec,
   vesselModelSpec,
 } from './fleetModels.js';
+import { nonVesselKind } from './vesselTypes.js';
 import { FLEET_TRAIL_ANCHORS } from './fleetTrailAnchors.js';
 import { TRANSIT_MODES } from './transitFeeds.js';
 import {
@@ -398,7 +399,6 @@ test('aids to navigation are the buoy of the mark their type names', () => {
     ['Isolated danger', 'buoy_isolated_danger'],
     ['Beacon, Special Mark', 'buoy_special'],
     ['Special Mark', 'buoy_special'],
-    ['Light Vessel / LANBY / Rigs', 'buoy_special'],
     ['RACON', 'buoy_special'],
     ['Light, with Sectors', 'buoy_special'],
     ['Reference point', 'buoy_special'],
@@ -442,6 +442,86 @@ test('aids to navigation are the buoy of the mark their type names', () => {
     const spec = vesselModelSpec(set, vessel);
     assert.notEqual(spec.category, 'buoys', vessel.type);
     assert.equal(spec.fixed, undefined, vessel.type);
+  }
+});
+
+test('a platform gets the offshore platform model', () => {
+  for (const vessel of [
+    { type: 'Offshore Platform' },
+    { type: 'Drilling Rig' },
+    { type: 'Drilling Jack Up' },
+    { type: '', destination: 'STEADY OBJECT' },
+  ]) {
+    const spec = vesselModelSpec(set, vessel);
+    assert.equal(spec?.key.split('@')[0], 'offshore_platform', vessel.type);
+    assert.equal(spec.model, 'offshore_platform');
+    assert.equal(spec.fixed, true);
+    // It stands on the seabed: the sea surface does not move it.
+    assert.equal(spec.grounded, true);
+    // Drawn as built, whatever length a report gives.
+    assert.equal(spec.scale, 1);
+  }
+  assert.equal(catalog.offshore_platform.category, 'other');
+  assert.equal(catalog.offshore_platform.icon, 'platform');
+  assert.equal(
+    vesselModelSpec(set, { type: 'Offshore Platform', length: 300 }).scale,
+    1,
+  );
+  // A virtual one has no model; nor has a platform the catalog lacks.
+  assert.equal(
+    vesselModelSpec(set, { type: 'Offshore Platform', virtual: true }),
+    null,
+  );
+  assert.equal(
+    vesselModelSpec({ catalog: {}, types }, { type: 'Offshore Platform' }),
+    null,
+  );
+});
+
+test('an aid-kind platform, lightship or LANBY gets the special-mark buoy', () => {
+  // Aid types 3 and 31 also mark wind-farm turbines: the platform icon, but
+  // not the jacket.
+  for (const vessel of [
+    { type: 'Fixed structure off shore', mmsi: '993672001' },
+    { type: 'Light Vessel / LANBY / Rigs', mmsi: '993672001' },
+    { type: 'Fixed structure off shore' },
+  ]) {
+    assert.equal(nonVesselKind(vessel), 'platform', JSON.stringify(vessel));
+    const spec = vesselModelSpec(set, vessel);
+    assert.equal(spec?.model, 'buoy_special', JSON.stringify(vessel));
+    assert.equal(spec.fixed, true);
+    assert.equal(spec.grounded, undefined, 'a buoy floats');
+  }
+  assert.equal(
+    vesselModelSpec(set, {
+      type: 'Fixed structure off shore',
+      mmsi: '993672001',
+      virtual: true,
+    }),
+    null,
+  );
+  for (const type of ['Lightship', 'Light Vessel', 'LANBY'])
+    for (const mmsi of ['', '993672001']) {
+      const vessel = { type, mmsi };
+      assert.equal(nonVesselKind(vessel), 'aid', JSON.stringify(vessel));
+      const spec = vesselModelSpec(set, vessel);
+      assert.equal(spec?.model, 'buoy_special', JSON.stringify(vessel));
+      assert.equal(spec.fixed, true);
+    }
+  // A vessel that tends one or a jack-up barge keeps its hull.
+  for (const type of ['Lightship Tender', 'Jack Up Barge']) {
+    assert.equal(nonVesselKind({ type }), null, type);
+    assert.equal(vesselModelSpec(set, { type }).fixed, undefined, type);
+  }
+});
+
+test('a beacon gets the red can', () => {
+  for (const mmsi of ['970123456', '972123456', '974123456']) {
+    const spec = vesselModelSpec(set, { type: '', mmsi });
+    assert.equal(spec?.key.split('@')[0], 'can_red', mmsi);
+    assert.equal(spec.model, 'can_red');
+    assert.equal(spec.fixed, true);
+    assert.equal(spec.grounded, undefined, 'the can floats');
   }
 });
 

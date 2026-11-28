@@ -508,3 +508,48 @@ test('vessels in an area leave out buoys and beacons', async () => {
     !all.data.breakdown.groups.some((group) => /mark/i.test(group.value)),
   );
 });
+
+test('vessels in an area leave out stations, SAR aircraft and distress beacons', async () => {
+  const withStations = {
+    ...vessels(),
+    async getSnapshot() {
+      return {
+        records: [
+          ...records,
+          // Datalastic files a VTS station as a type of its own.
+          vessel('366999713', 37.8, -122.42, {
+            name: 'SF VTS',
+            type: 'Manned VTS',
+            typeBroad: 'Navigation Aid',
+            speedMps: 0,
+          }),
+          // A coast station's MMSI as AISStream sends it: a number, so its
+          // leading zeros are gone.
+          vessel('3669990', 37.79, -122.43, { type: '' }),
+          vessel('PLATFORM', 37.79, -122.41, {
+            mmsi: '',
+            type: '',
+            destination: 'STEADY OBJECT',
+          }),
+          vessel('111366100', 37.8, -122.41, { type: '' }),
+          vessel('970123456', 37.8, -122.4, { type: '' }),
+          vessel('972123456', 37.8, -122.4, { type: '' }),
+          vessel('974123456', 37.8, -122.4, { type: '' }),
+        ],
+        source: 'AISStream',
+        observedAtMs: Date.UTC(2026, 0, 1),
+        freshness: 'current',
+      };
+    },
+  };
+  const catalog = composeCatalog({
+    tools: coreTools,
+    services: { vessels: withStations },
+  });
+  const all = await catalog.call('vessels_in_area', { area: bay });
+  assert.equal(all.data.total, 2);
+  assert.deepEqual(all.data.rows.map((row) => row.mmsi).sort(), [
+    '366999712',
+    '538001234',
+  ]);
+});

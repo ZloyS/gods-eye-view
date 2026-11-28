@@ -170,55 +170,385 @@ export function aidToNavigationTypeName(code) {
   return AID_TYPE_NAMES[index] ?? AID_TYPE_NAMES[0];
 }
 
-/** Every kind {@link aidToNavigationTypeName} names, lowercased. */
-const AID_TYPE_NAME_SET = new Set(
-  AID_TYPE_NAMES.map((name) => name.toLowerCase()),
-);
+/**
+ * Every kind {@link aidToNavigationTypeName} names, lowercased with its
+ * punctuation and spacing folded: feeds spell them several ways ("Light
+ * without sectors", "Light Vessel/LANBY/Rigs").
+ */
+const AID_TYPE_NAME_SET = new Set(AID_TYPE_NAMES.map(aidNameKey));
+
+function aidNameKey(name) {
+  return name
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, ' ')
+    .trim();
+}
 
 /**
- * Words a vessel type uses for an aid to navigation. A vessel that works on
- * one ("Buoy Tender", "Buoy-Laying Vessel", "Buoy Layer") is a ship underway,
+ * Words a vessel type uses for an aid to navigation, a lightship, light vessel
+ * or LANBY among them. A vessel that works on one ("Buoy Tender",
+ * "Lightship Tender", "Buoy-Laying Vessel", "Buoy Layer") is a ship underway,
  * not a mark on the water.
  */
 const AID_TYPE_TEXT =
-  /navaid|\baton\b|aids? to nav|nav(igation)? aid|racon|lighthouse|lightship|light vessel|reference point|hand mark|cardinal|safe water|preferred channel|isolated danger|special mark|beacon|buoy/i;
+  /navaid|\baton\b|aids? to nav|nav(igation)? aid|racon|lighthouse|lightship|light[- ]?vessel|\blanby\b|reference point|hand mark|cardinal|safe water|preferred channel|isolated danger|special mark|beacon|buoy/i;
 const AID_WORKER_TEXT = /tender|lay(ing|er)\b/i;
 
-/** ITU MID 99: the MMSI of an AIS aid-to-navigation station (99MIDxxxx). */
-const AID_MMSI = /^99\d{7}$/;
+/**
+ * Words a type uses for a station that is not a vessel: a vessel traffic
+ * service, an AIS base or coast station, a fixed station, or a helicopter
+ * landing platform.
+ */
+const STATION_TYPE_TEXT =
+  /\bvts\b|vessel traffic serv|base station|coast(al)? station|shore station|fixed station|helicopter landing platform|helipad|heliport/i;
 
 /**
- * Whether each type text seen names an aid. Vessel layers ask per vessel on
- * their draw passes, and a feed uses few distinct type texts, so each is
- * matched once; the memo is bounded against a feed of free-form types.
+ * Words a type uses for an offshore platform: a platform or rig, a jack-up,
+ * a fixed offshore structure. A vessel that serves or moves one ("Platform
+ * Supply Vessel", "Rig Supply Ship", "Jack Up Barge", "Rig Mover", "Anchor
+ * Handling Rig") is a ship, and so is a landing platform dock.
  */
-const AID_TYPE_MEMO = new Map();
-const AID_TYPE_MEMO_MAX = 1024;
+const PLATFORM_TEXT =
+  /\b(platforms?|rigs?|jack[- ]?up|off ?shore structure|fixed structure|steady object)\b/i;
+const PLATFORM_WORKER_TEXT =
+  /supply|support|vessel|ship|boat|tender|tug|crew|landing|dock|barge|mover|anchor|handling|installation/i;
 
-function typeNamesAid(text) {
-  let aid = AID_TYPE_MEMO.get(text);
-  if (aid !== undefined) return aid;
-  aid =
-    AID_TYPE_NAME_SET.has(text.toLowerCase()) ||
-    (AID_TYPE_TEXT.test(text) && !AID_WORKER_TEXT.test(text));
-  if (AID_TYPE_MEMO.size >= AID_TYPE_MEMO_MAX) AID_TYPE_MEMO.clear();
-  AID_TYPE_MEMO.set(text, aid);
-  return aid;
+/**
+ * The aid kinds an aid-to-navigation report names for a platform: type code
+ * 3 ("Fixed structure off shore") and 31 ("Light Vessel / LANBY / Rigs").
+ * Either also marks a wind-farm turbine or substation.
+ */
+const PLATFORM_AID_NAMES = new Set(
+  [AID_TYPE_NAMES[3], AID_TYPE_NAMES[31]].map(aidNameKey),
+);
+
+/**
+ * Whether a type is the aid kind of a platform ({@link PLATFORM_AID_NAMES}).
+ * @param {string|number|null|undefined} type
+ * @returns {boolean}
+ */
+export function isPlatformAid(type) {
+  return PLATFORM_AID_NAMES.has(aidNameKey(typeText(type)));
+}
+
+/**
+ * MMSI prefixes of what is not a vessel (ITU-R M.585), read on the
+ * nine-digit MMSI ({@link normalizeMmsi}); MIDs run from 201 to 775:
+ * 00MIDxxxx a coast or AIS base station, 99MIDxxxx an aid to navigation,
+ * 111MIDxxx a search-and-rescue aircraft, and 970xxyyyy, 972xxyyyy and
+ * 974xxyyyy an AIS-SART, a man-overboard device and an EPIRB.
+ */
+const NON_VESSEL_MMSI = Object.freeze([
+  ['station', /^00[2-7]\d{6}$/],
+  ['aid', /^99\d{7}$/],
+  ['aircraft', /^111[2-7]\d{5}$/],
+  ['beacon', /^97[024]\d{6}$/],
+]);
+
+/**
+ * An MMSI as its nine digits. A feed that passes the MMSI on as a number
+ * drops its leading zeros: a coast station's 00MIDxxxx arrives with seven
+ * digits and a group's 0MIDxxxxx with eight, so those are padded back.
+ * Anything else comes back trimmed.
+ * @param {string|number|null|undefined} mmsi
+ * @returns {string}
+ */
+export function normalizeMmsi(mmsi) {
+  const text = mmsi === null || mmsi === undefined ? '' : String(mmsi).trim();
+  return /^\d{7,8}$/.test(text) ? text.padStart(9, '0') : text;
+}
+
+/**
+ * The non-vessel kind each type text seen names, or null. Vessel layers ask
+ * per vessel on their draw passes, and a feed uses few distinct type texts,
+ * so each is matched once; the memo is bounded against a feed of free-form
+ * types.
+ */
+const MARK_TYPE_MEMO = new Map();
+const MARK_TYPE_MEMO_MAX = 1024;
+
+function typeNamesMark(text) {
+  let kind = MARK_TYPE_MEMO.get(text);
+  if (kind !== undefined) return kind;
+  kind = null;
+  if (STATION_TYPE_TEXT.test(text)) kind = 'station';
+  else if (
+    PLATFORM_AID_NAMES.has(aidNameKey(text)) ||
+    (PLATFORM_TEXT.test(text) && !PLATFORM_WORKER_TEXT.test(text))
+  )
+    kind = 'platform';
+  else if (
+    AID_TYPE_NAME_SET.has(aidNameKey(text)) ||
+    (AID_TYPE_TEXT.test(text) && !AID_WORKER_TEXT.test(text))
+  )
+    kind = 'aid';
+  if (MARK_TYPE_MEMO.size >= MARK_TYPE_MEMO_MAX) MARK_TYPE_MEMO.clear();
+  MARK_TYPE_MEMO.set(text, kind);
+  return kind;
+}
+
+const typeText = (type) =>
+  typeof type === 'string' ? type.trim() : String(type ?? '').trim();
+
+/** "STEADY OBJECT" given as the whole destination: what a fixed platform sends. */
+const STEADY_OBJECT_DESTINATION = /^steady object$/i;
+
+/** The AIS ship-type code (1 to 99) in `type` or `typeBroad`, else null. */
+function shipTypeCode(type, typeBroad) {
+  for (const value of [type, typeBroad]) {
+    const text = typeText(value);
+    if (!/^\d+$/.test(text)) continue;
+    const code = Number(text);
+    if (code > 0 && code < 100) return code;
+  }
+  return null;
+}
+
+/** Whether `type` or `typeBroad` is text that names a type ("unknown" does not). */
+function namesTypeText(type, typeBroad) {
+  return [type, typeBroad].some((value) => {
+    const text = typeText(value);
+    return text !== '' && !/^\d+$/.test(text) && !UNKNOWN_TYPE_TEXT.test(text);
+  });
+}
+
+/**
+ * Whether a text type names a vessel: a category rule places it (`other`, which
+ * also holds "reserved" and "spare", does not count), or it is a vessel that
+ * works on a platform or an aid ("Platform Supply Vessel", "Buoy Tender").
+ */
+function typeNamesVessel(text) {
+  const category = textCategory(text);
+  return (
+    (Boolean(category) && category !== 'other') ||
+    (PLATFORM_TEXT.test(text) && PLATFORM_WORKER_TEXT.test(text)) ||
+    (AID_TYPE_TEXT.test(text) && AID_WORKER_TEXT.test(text))
+  );
+}
+
+/**
+ * What a vessel record is when it is not a vessel, else null: `aid` (an aid
+ * to navigation: a buoy, beacon, mark, RACON, light, lightship or LANBY),
+ * `station` (a vessel traffic service, an AIS base or coast station, or a
+ * helicopter landing platform), `platform` (an offshore platform or rig, or
+ * a fixed offshore structure), `aircraft` (a search-and-rescue
+ * aircraft) or `beacon` (a distress beacon: an AIS-SART, man-overboard device
+ * or EPIRB). In order: a distress beacon's MMSI prefix; a station's, aid's or
+ * SAR aircraft's MMSI prefix, unless the row carries an AIS ship-type code (1
+ * to 99), which only a ship's own reports carry; a virtual aid; the words of
+ * the detailed type (`type`), then the broad type (`typeBroad`), where a type
+ * that names a vessel ends the search; on a row that names no type, a
+ * destination of exactly "STEADY OBJECT", which a platform sends. An aid
+ * whose type is a platform's aid kind (codes 3 and 31) is a platform, and
+ * platform words never overrule a ship-type code. SAR aircraft and distress
+ * beacons are known by their MMSI only. A numeric AIS ship type never names
+ * one.
+ * @param {{type?: string|number|null, typeBroad?: string|null,
+ *   mmsi?: string|number|null, destination?: string|null,
+ *   virtual?: boolean}} [vessel]
+ * @returns {'aid'|'station'|'platform'|'aircraft'|'beacon'|null}
+ */
+export function nonVesselKind({
+  type,
+  typeBroad,
+  mmsi,
+  destination,
+  virtual,
+} = {}) {
+  const number = normalizeMmsi(mmsi);
+  const prefix = number
+    ? (NON_VESSEL_MMSI.find(([, pattern]) => pattern.test(number))?.[0] ?? null)
+    : null;
+  if (prefix === 'beacon') return prefix;
+  const code = shipTypeCode(type, typeBroad);
+  if (prefix && code === null)
+    return prefix === 'aid' && isPlatformAid(type) ? 'platform' : prefix;
+  if (virtual === true) return isPlatformAid(type) ? 'platform' : 'aid';
+  for (const value of [type, typeBroad]) {
+    const text = typeText(value);
+    if (!text || /^\d+$/.test(text)) continue;
+    const kind = typeNamesMark(text);
+    if (kind === 'platform' && code !== null) return null;
+    if (kind) return kind;
+    // A type that names a vessel is not overruled by a broader one.
+    if (typeNamesVessel(text)) return null;
+  }
+  if (
+    code === null &&
+    !namesTypeText(type, typeBroad) &&
+    STEADY_OBJECT_DESTINATION.test(String(destination ?? '').trim())
+  )
+    return 'platform';
+  return null;
 }
 
 /**
  * Whether a vessel record is an aid to navigation (a buoy, beacon, mark,
- * RACON or light) rather than a vessel: its type is one of the kinds an aid
- * report names or uses a word for one, or its MMSI is an aid-to-navigation
- * station's, or it is a virtual aid. A numeric AIS ship type never names one.
+ * RACON or light) rather than a vessel or a station: its MMSI is an
+ * aid-to-navigation station's, it is a virtual aid, or its type is one of
+ * the kinds an aid report names or uses a word for one
+ * ({@link nonVesselKind}).
  * @param {{type?: string|number|null, mmsi?: string|number|null,
  *   virtual?: boolean}} vessel
  * @returns {boolean}
  */
-export function isAidToNavigation({ type, mmsi, virtual } = {}) {
-  if (virtual === true) return true;
-  const text = typeof type === 'string' ? type.trim() : String(type ?? '');
-  if (text && typeNamesAid(text)) return true;
-  if (mmsi === null || mmsi === undefined || mmsi === '') return false;
-  return AID_MMSI.test(typeof mmsi === 'string' ? mmsi.trim() : String(mmsi));
+export function isAidToNavigation(vessel = {}) {
+  return nonVesselKind(vessel) === 'aid';
+}
+
+/**
+ * Whether a record is a vessel: not an aid, station, platform, aircraft or
+ * beacon ({@link nonVesselKind}). Vessel counts and ship models take only these.
+ * @param {object} [vessel]
+ * @returns {boolean}
+ */
+export function isVessel(vessel = {}) {
+  return nonVesselKind(vessel) === null;
+}
+
+/**
+ * Whether a non-vessel's type text says what it is: text, not a ship-type
+ * code or "unknown", that names its kind `mark` or nothing else. A card
+ * shows such text ("MANNED VTS", "EPIRB") in place of the kind's word, and
+ * not text that names a vessel or another kind ("Cargo" on a beacon).
+ * @param {string|number|null|undefined} type
+ * @param {'aid'|'station'|'platform'|'aircraft'|'beacon'} mark
+ * @returns {boolean}
+ */
+export function typeTextFitsMark(type, mark) {
+  const text = typeText(type);
+  if (!text || /^\d+$/.test(text) || UNKNOWN_TYPE_TEXT.test(text)) return false;
+  const named = typeNamesMark(text);
+  if (named) return named === mark;
+  return textCategory(text) === null;
+}
+
+/**
+ * The functional categories a vessel layer shows or hides, in panel order.
+ * `service` holds tugs and port service, offshore and work vessels, and
+ * government and safety (with search-and-rescue aircraft and distress
+ * beacons); `other` holds types no rule places, no type at all, and what is
+ * not a vessel and stays put (aids to navigation, stations and platforms).
+ */
+export const VESSEL_CATEGORIES = Object.freeze([
+  'tankers',
+  'cargo',
+  'passenger',
+  'fishing',
+  'service',
+  'leisure',
+  'other',
+]);
+
+/** Each category shown or not when nothing chose: every one shown. */
+export const DEFAULT_VESSEL_CATEGORY_VISIBILITY = Object.freeze(
+  Object.fromEntries(VESSEL_CATEGORIES.map((category) => [category, true])),
+);
+
+const NON_VESSEL_CATEGORIES = Object.freeze({
+  aid: 'other',
+  station: 'other',
+  platform: 'other',
+  aircraft: 'service',
+  beacon: 'service',
+});
+
+/**
+ * Category by the words of a text type, the first that matches. Datalastic
+ * publishes no fixed list of detailed types, so these are word rules, not
+ * names. Every tanker (crude, products, chemical, gas, bunkering, asphalt,
+ * FSO and FPSO) is a tanker, ahead of the cargo words a broad type carries.
+ */
+const CATEGORY_TEXT_RULES = [
+  [
+    'tankers',
+    /tanker|tank[- ]?barge|\bcrude\b|\blng\b|\blpg\b|gas carrier|bunker|\bfso\b|\bfpso\b|floating (storage|production)|oil (products|carrier)|chemical carrier|\boiler\b/i,
+  ],
+  [
+    'service',
+    /military|naval|navy|warship|aircraft carrier|frigate|corvette|destroyer|submarine|mine ?(sweeper|hunter)|law enforce|police|patrol|coast ?guard|customs|\bsar\b|search (and|&) rescue|rescue|medical|hospital|fire ?fight|non-?combatant/i,
+  ],
+  ['passenger', /passenger|ferry|cruise|high[- ]?speed|\bhsc\b/i],
+  ['fishing', /fish|trawler|seiner|longliner/i],
+  [
+    'service',
+    /dredg|hopper|diving|dive ops|pollution|oil recovery|supply|offshore|cable|pipe ?lay|crane|research|survey|drill|anchor handl|well stim|jack[- ]?up|work ?(boat|vessel|ship)|crew boat|buoy[- ](tender|lay)|salvage/i,
+  ],
+  ['service', /tug|tow|pilot|tender|ice ?breaker|pusher|port service|mooring/i],
+  // A carrier of yachts is cargo: it goes on to the cargo words.
+  ['leisure', /^(?!.*carrier).*(sail|pleasure|yacht|leisure|recreation)/i],
+  [
+    'other',
+    /training|accommodation|wing in ground|\bwig\b|reserved|\blocal\b|spare|\bother\b/i,
+  ],
+  [
+    'cargo',
+    /cargo|container|bulk|carrier|freighter|ro-?ro|reefer|vehicle|heavy (lift|load)|timber|cement|livestock|barge|\bore\b/i,
+  ],
+];
+/** A text type that names no type at all. */
+const UNKNOWN_TYPE_TEXT =
+  /^(unknown|unspecified|not available|n\/?a|none|undefined|-+|\?+)$/i;
+
+/** Category by text type: a category, '' for no type, null for unplaced. */
+const CATEGORY_MEMO = new Map();
+const CATEGORY_MEMO_MAX = 1024;
+
+function textCategory(text) {
+  let category = CATEGORY_MEMO.get(text);
+  if (category !== undefined) return category;
+  category = UNKNOWN_TYPE_TEXT.test(text)
+    ? ''
+    : (CATEGORY_TEXT_RULES.find(([, pattern]) => pattern.test(text))?.[0] ??
+      null);
+  if (CATEGORY_MEMO.size >= CATEGORY_MEMO_MAX) CATEGORY_MEMO.clear();
+  CATEGORY_MEMO.set(text, category);
+  return category;
+}
+
+/**
+ * Category by AIS ship-type code (ITU-R M.1371), 1 to 99. Wing-in-ground,
+ * reserved and local codes, and 90 to 99, are `other`.
+ */
+function codeCategory(code) {
+  if (code === 30) return 'fishing';
+  if ([31, 32, 33, 34, 35, 50, 51, 52, 53, 54, 55, 58, 59].includes(code))
+    return 'service';
+  if (code === 36 || code === 37) return 'leisure';
+  if ((code >= 40 && code < 50) || (code >= 60 && code < 70))
+    return 'passenger';
+  if (code >= 70 && code < 80) return 'cargo';
+  if (code >= 80 && code < 90) return 'tankers';
+  return 'other';
+}
+
+/**
+ * The functional category of a vessel record, one of
+ * {@link VESSEL_CATEGORIES}. Checked in order, the first that answers: what
+ * it is when it is not a vessel ({@link nonVesselKind}: `other`, or
+ * `service` for a search-and-rescue aircraft or a distress beacon); the
+ * words of its detailed type (`type`, such as "Oil Products Tanker"); the
+ * words of its broad type (`typeBroad`, such as "Cargo"); its AIS ship-type
+ * code. A type no rule places, and no type at all, is `other`.
+ * @param {{type?: string|number|null, typeBroad?: string|null,
+ *   mmsi?: string|number|null, destination?: string|null,
+ *   virtual?: boolean}} [vessel]
+ * @returns {string}
+ */
+export function vesselCategory(vessel = {}) {
+  const mark = nonVesselKind(vessel);
+  if (mark) return NON_VESSEL_CATEGORIES[mark];
+  let code = null;
+  for (const value of [vessel.type, vessel.typeBroad]) {
+    const text = typeText(value);
+    if (!text) continue;
+    if (/^\d+$/.test(text)) {
+      code ??= Number(text);
+      continue;
+    }
+    const category = textCategory(text);
+    if (category) return category;
+  }
+  if (code !== null && code > 0 && code < 100) return codeCategory(code);
+  return 'other';
 }

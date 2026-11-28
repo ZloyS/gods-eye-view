@@ -4540,5 +4540,16 @@
   "Reference monitor": "Referensinstrument",
   "Needs {envVars} — add one in Provider Settings": "Kräver {envVars} – lägg till en av dem i Leverantörsinställningar",
   "CABLE \u00b7 {name}": "KABEL · {name}",
-  "LANDING POINT \u00b7 {name}": "LANDNINGSPUNKT · {name}"
+  "LANDING POINT \u00b7 {name}": "LANDNINGSPUNKT · {name}",
+  "COAST STATION": "KUSTSTATION",
+  "SAR AIRCRAFT": "SAR-LUFTFARTYG",
+  "DISTRESS BEACON": "NÖDSÄNDARE",
+  "PLATFORM": "PLATTFORM",
+  "vessel category|Tankers": "Tankfartyg",
+  "vessel category|Cargo": "Lastfartyg",
+  "vessel category|Passenger": "Passagerarfartyg",
+  "vessel category|Fishing": "Fiskebåtar",
+  "vessel category|Service": "Servicefartyg",
+  "vessel category|Leisure": "Fritidsbåtar",
+  "vessel category|Other": "Övriga"
 }

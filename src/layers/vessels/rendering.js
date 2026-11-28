@@ -1,6 +1,6 @@
 import { t } from '../../i18n/index.js';
 import {
-  AID_TO_NAVIGATION_STYLE,
+  NON_VESSEL_STYLES,
   vesselTypeCss,
   vesselOverlayCohortLimit,
   VESSEL_OVERLAY_SOURCE_ID,
@@ -44,8 +44,12 @@ import {
 } from '../../data/fleetModels.js';
 import { createFleetModelLayer } from '../../data/fleetModelInstances.js';
 import { vesselPartState } from '../../data/modelPartDrivers.js';
-import { isAidToNavigation, vesselKind } from '../../data/vesselTypes.js';
-import { aidSprite, vesselSprite } from '../../data/vesselSprites.js';
+import {
+  nonVesselKind,
+  vesselCategory,
+  vesselKind,
+} from '../../data/vesselTypes.js';
+import { nonVesselSprite, vesselSprite } from '../../data/vesselSprites.js';
 import { cssColor } from '../../render/color.js';
 import { KNOT_MPS } from '../../data/units.js';
 import { PACE_MAX_HZ, PACE_MIN_HZ, PACE_STEP_PX } from '../../renderPace.js';
@@ -91,6 +95,54 @@ const _movedFrom = vec();
  * drawn along as one straight line on the renderer's clock: at 10 km the
  * line runs under 2 m inside the great circle the layer reads it on. */
 const SEGMENT_PIECE_M = 10000;
+
+/** What is not a vessel and is drawn standing still and upright. */
+const FIXED_MARKS = new Set(['aid', 'station', 'platform', 'beacon']);
+
+/** Each record's kind and category, with the fields they were read from. */
+const recordClasses = new WeakMap();
+
+/**
+ * What a record is (`nonVesselKind`) and its category (`vesselCategory`),
+ * worked out again only when a field they read changes: the layer asks
+ * several times per record on every poll and visibility pass.
+ * @param {Object} record - Vessel record.
+ * @returns {{kind: ?string, category: string}}
+ */
+function recordClass(record) {
+  let entry = recordClasses.get(record);
+  if (
+    !entry ||
+    entry.type !== record.type ||
+    entry.typeBroad !== record.typeBroad ||
+    entry.mmsi !== record.mmsi ||
+    entry.destination !== record.destination ||
+    entry.virtual !== record.virtual
+  ) {
+    entry = {
+      type: record.type,
+      typeBroad: record.typeBroad,
+      mmsi: record.mmsi,
+      destination: record.destination,
+      virtual: record.virtual,
+      kind: nonVesselKind(record),
+      category: vesselCategory(record),
+    };
+    recordClasses.set(record, entry);
+  }
+  return entry;
+}
+
+/**
+ * Whether a record is drawn as a mark that stands still and upright: an
+ * aid to navigation, a station, a platform or a distress beacon. A
+ * search-and-rescue aircraft turns with its course, as a vessel does.
+ * @param {Object} record - Vessel record.
+ * @returns {boolean}
+ */
+export function isFixedMark(record) {
+  return FIXED_MARKS.has(recordClass(record).kind);
+}
 
 export function createRendering({
   vesselState,
@@ -415,9 +467,42 @@ export function createRendering({
     }
   }
 
+  /**
+   * Whether a record's category is shown (the row's toggles,
+   * `vesselState.categories`). A hidden one draws no icon, model or card and
+   * is not picked.
+   */
+  function categoryShown(record) {
+    return vesselState.categories[recordClass(record).category] !== false;
+  }
+
+  /**
+   * Take the category tally of a visibility pass; the row is painted again
+   * when it changed.
+   * @param {Map<string, number>} counts
+   */
+  function setCategoryCounts(counts) {
+    const previous = vesselState.categoryCounts;
+    vesselState.categoryCounts = counts;
+    if (
+      previous.size !== counts.size ||
+      [...counts].some(([category, count]) => previous.get(category) !== count)
+    )
+      vesselState._panel?.invalidate();
+  }
+
+  /** Draw every record again after the category toggles changed. */
+  function applyCategoryVisibility() {
+    if (state.icons)
+      for (const record of state.records.all) syncRecordIcon(record);
+    // Models are gathered again at once, without the hidden ones.
+    modelCandidatesAtMs = -Infinity;
+    updateVisibility(true);
+  }
+
   /** The icon item a record draws, as it now is. */
   function iconItem(record, visual) {
-    const aid = isAidToNavigation(record);
+    const fixed = isFixedMark(record);
     const courseDeg = vesselCourseDeg(record);
     // Following the clock, not there yet at the time drawn.
     visual.seen = seenYet(record);
@@ -427,17 +512,21 @@ export function createRendering({
     visual.plan = plan;
     return {
       id: visual.iconId,
-      // Hidden while the bridge camera rides it, its model draws it, or it
-      // is not there yet.
-      show: !isCockpitSubject(record) && !visual.modelOwnsVisual && visual.seen,
+      // Hidden while the bridge camera rides it, its model draws it, it is
+      // not there yet or its category is hidden.
+      show:
+        !isCockpitSubject(record) &&
+        !visual.modelOwnsVisual &&
+        visual.seen &&
+        categoryShown(record),
       pos: plan?.pos ?? visual.position,
       image: shipIcon(record),
       size: [SHIP_ICON_PX, SHIP_ICON_PX],
       // Tinted by type; selection changes neither the colour nor the size.
       color: shipTint(record),
       scale: shipScale(record),
-      // An aid's buoy stands upright on screen; a vessel turns with course.
-      rotationMode: aid ? 'screen' : 'course',
+      // A fixed mark stands upright on screen; a vessel turns with course.
+      rotationMode: fixed ? 'screen' : 'course',
       rotation: 0,
       // Held on course, or along its track on the renderer's clock;
       // `course` for renderers without motion segments.
@@ -528,14 +617,14 @@ export function createRendering({
   /**
    * Best available real-world direction of travel for a vessel, degrees
    * clockwise from north (true heading preferred, course-over-ground fallback).
-   * The renderer turns this into its screen rotation each frame. An aid to
-   * navigation is fixed, so it has none.
+   * The renderer turns this into its screen rotation each frame. A fixed
+   * mark (`isFixedMark`) has none.
    * @param {Object} record - Vessel record.
    * @returns {number} Course in degrees (0 when unknown).
    */
 
   function vesselCourseDeg(record) {
-    if (isAidToNavigation(record)) return 0;
+    if (isFixedMark(record)) return 0;
     const direction = record.heading ?? record.course;
     return Number.isFinite(direction) ? direction : 0;
   }
@@ -543,28 +632,27 @@ export function createRendering({
   /**
    * The sprite a vessel is drawn as: the white hull of its kind
    * (`vesselKind`), bow up so the row's course turns it to its heading, or
-   * for an aid to navigation the buoy. The layer tints it
-   * (`shipTint`), so each shape takes one icon-atlas slot.
+   * for a record that is not a vessel its own mark (`nonVesselSprite`). The
+   * layer tints it (`shipTint`), so each shape takes one icon-atlas slot.
    * @param {Object} record - Vessel record.
    * @returns {string} SVG data URL.
    */
 
   function shipIcon(record) {
-    return isAidToNavigation(record)
-      ? aidSprite()
-      : vesselSprite(vesselKind(record.type));
+    const mark = recordClass(record).kind;
+    return mark ? nonVesselSprite(mark) : vesselSprite(vesselKind(record.type));
   }
 
   /**
    * A vessel's tint, `[r, g, b, a]`: its type's colour (vesselLabels.js,
-   * shared with its card), an aid's bone white.
+   * shared with its card), or the colour of what it is when it is not a
+   * vessel (`NON_VESSEL_STYLES`).
    * @param {Object} record - Vessel record.
    */
 
   function shipTint(record) {
-    const css = isAidToNavigation(record)
-      ? AID_TO_NAVIGATION_STYLE.css
-      : vesselTypeCss(record.type);
+    const mark = recordClass(record).kind;
+    const css = mark ? NON_VESSEL_STYLES[mark].css : vesselTypeCss(record.type);
     let tint = tints.get(css);
     if (!tint) tints.set(css, (tint = Object.freeze(cssColor(css))));
     return tint;
@@ -607,11 +695,14 @@ export function createRendering({
 
   /**
    * The model item for `record`, its spec rebuilt only when its type or size
-   * changes; null for a virtual aid to navigation, which keeps its disc: no
-   * buoy stands there (vesselModelSpec).
+   * changes. Null for a virtual aid to navigation, which keeps its disc: no
+   * buoy stands there; for a station or aircraft, which keeps its mark: no
+   * ship model is one (vesselModelSpec); and for a hidden category.
    */
   function modelItem(record, set) {
-    if (record.virtual === true) return null;
+    if (record.virtual === true || !categoryShown(record)) return null;
+    const mark = recordClass(record).kind;
+    if (mark === 'station' || mark === 'aircraft') return null;
     let item = modelItems.get(record.id);
     if (!item || item.record !== record)
       item = {
@@ -620,13 +711,13 @@ export function createRendering({
         tint: null,
         modelOwnsVisual: false,
       };
-    const specKey = `${record.type}|${record.mmsi}|${record.length}|${record.beam}|${record.name}`;
+    const specKey = `${record.type}|${record.typeBroad}|${record.mmsi}|${record.destination}|${record.length}|${record.beam}|${record.name}`;
     if (item.specKey !== specKey) {
       item.specKey = specKey;
       item.spec = vesselModelSpec(set, record);
     }
     item.position = getVisual(record).waterline;
-    // An aid to navigation is a fixed mark: it does not turn to a heading.
+    // A fixed mark (an aid, platform or beacon) does not turn to a heading.
     item.headingDeg = item.spec?.fixed ? 0 : vesselCourseDeg(record);
     item.show = record.id !== state.cockpitSubjectId && seenYet(record);
     return item;
@@ -1294,6 +1385,7 @@ export function createRendering({
       if (regularPass) {
         if (pose) vesselState._lastCamPoseSig = poseSignature(pose);
         updateClusteredLabels([]);
+        setCategoryCounts(new Map());
       }
       if (focusPass) {
         state.activeFocusCount = 0;
@@ -1316,7 +1408,11 @@ export function createRendering({
       // the frame), so only vessels it did not reach are moved.
       const catchUpAtMs = worldMs === null ? null : (clockPassAtMs ?? worldMs);
       let cameIntoView = false;
+      // The chips' counts, taken in the pass that visits every record.
+      const categoryCounts = new Map();
       for (const record of state.records.all) {
+        const { category } = recordClass(record);
+        categoryCounts.set(category, (categoryCounts.get(category) || 0) + 1);
         const visual = getVisual(record);
         const wasVisible = visual.visible;
         visual.visible = isVisible(visual.cullPosition, occluder, record);
@@ -1336,6 +1432,7 @@ export function createRendering({
         if (visual.visible) labelCandidates.push(record);
       }
       if (cameIntoView) placeNow();
+      setCategoryCounts(categoryCounts);
       updateClusteredLabels(labelCandidates);
     }
     if (focusPass && query && pose) {
@@ -1430,7 +1527,7 @@ export function createRendering({
   }
 
   function isVisible(cullPosition, occluder, record) {
-    if (record && !seenYet(record)) return false;
+    if (record && (!seenYet(record) || !categoryShown(record))) return false;
     if (!cullPosition || !occluder) return true;
     return occluder.isPointVisible(cullPosition);
   }
@@ -1573,7 +1670,7 @@ export function createRendering({
             : t('Focus {label}', { label: card.title }),
           activate: () => {
             const record = state.records.byId.get(id);
-            if (!record) return false;
+            if (!record || !categoryShown(record)) return false;
             components.selection.selectAndFocusVessel(record);
             return true;
           },
@@ -1638,6 +1735,8 @@ export function createRendering({
     shipScale,
     vesselCourseDeg,
     shipIcon,
+    categoryShown,
+    applyCategoryVisibility,
     installRuntime,
     updateVisibility,
     cancelTrailingVisibilityPass,

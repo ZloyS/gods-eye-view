@@ -14,6 +14,11 @@ import {
 import { msg } from '../i18n/marker.js';
 import { AIRCRAFT_CLASS_LABELS } from './aircraftClass.js';
 import { aircraftEmergency } from './aircraftEmergency.js';
+import {
+  VESSEL_CATEGORY_CONTEXT,
+  VESSEL_CATEGORY_LABELS,
+} from './vesselCategoryLabels.js';
+import { vesselCategory } from './vesselTypes.js';
 import { fireDetectionKey } from './firmsLabels.js';
 import { fromDegrees, fromRadians } from '../geo/ellipsoid.js';
 import { horizonFrom } from '../geo/horizon.js';
@@ -177,6 +182,9 @@ const HIDDEN_FACTS = new Set([
   'cetacean',
   // Locator pin placement guides the camera.
   'pinHeightM',
+  // What a vessel's category is read from; the card shows its type.
+  'typeBroad',
+  'virtual',
   // Shown as the card's route line instead.
   'routeOrigin',
   'routeDestination',
@@ -1842,7 +1850,8 @@ const AIRCRAFT_CLASS_NAMES = {
  * What a layer's items are made of, for Context: one or two ways of splitting
  * them, each a list of labelled counts that add up to `total`. Aircraft split
  * into civilian in the air, military in the air and on the ground, then by
- * type of aircraft; vessels by type of ship; satellites by class; earthquakes
+ * type of aircraft; vessels by category (the vessels row's chips), then by
+ * type of ship; satellites by class; earthquakes
  * by magnitude. Counts cover the records the layer hands out (it may cap
  * them), inside `rect` when one is given.
  * @param {object} dataManager
@@ -1890,6 +1899,25 @@ export function layerBreakdown(dataManager, layerId, { rect = null } = {}) {
       ),
     });
   } else if (kind === 'vessel') {
+    splits.push({
+      title: msg('Category'),
+      parts: tallyBy(
+        records,
+        (record) =>
+          VESSEL_CATEGORY_LABELS[
+            vesselCategory({
+              type: record.shipType,
+              typeBroad: record.typeBroad,
+              mmsi: record.mmsi,
+              destination: record.destination,
+              virtual: record.virtual,
+            })
+          ],
+        // Every category its own row, as its chip: a folded tail would join
+        // the Other category's row and differ from the Other chip.
+        { keep: Infinity },
+      ).map((part) => ({ ...part, context: VESSEL_CATEGORY_CONTEXT })),
+    });
     splits.push({
       title: msg('Type'),
       parts: tallyBy(records, (record) => shipTypeName(record.shipType)),

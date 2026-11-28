@@ -111,8 +111,9 @@ let instances = 0;
  *   model, the surface's height above the model's point (metres) and its
  *   slope (rise per metre east and north) at its longitude and latitude, or
  *   null where the sea is flat. Each model is raised by that height and
- *   tilted to lie on that slope (`fleetModelTilt`); without one, or where it
- *   answers null, models stand level on their point.
+ *   tilted to lie on that slope (`fleetModelTilt`); without one, where it
+ *   answers null, or for a spec flagged `grounded` (a structure on the
+ *   seabed), models stand level on their point.
  * @param {object} [options.draw] Stands in for the viewer's draw port (tests).
  * @returns {object}
  */
@@ -220,9 +221,12 @@ export function createFleetModelLayer({
     for (const id of eligible) admit(id, items.get(id), cap);
   }
 
-  /** The sea surface under `item` this frame (`seaSurface`), or null. */
+  /**
+   * The sea surface under `item` this frame (`seaSurface`), or null; null
+   * for a grounded spec, which the sea does not move.
+   */
   function waveUnder(item, surface) {
-    if (!surface || !item.position) return null;
+    if (!surface || !item.position || item.spec.grounded) return null;
     const at = toLonLatH(item.position);
     if (!at) return null;
     const wave = surface(at.lon, at.lat);

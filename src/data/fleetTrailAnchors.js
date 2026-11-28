@@ -51,6 +51,7 @@ export const FLEET_TRAIL_ANCHORS = Object.freeze({
   k35r: Object.freeze([28.0221, -2.4508, 0]),
   md11: Object.freeze([30.8002, 1.2291, 0]),
   mq9: Object.freeze([5.8498, -0.062, 0]),
+  offshore_platform: Object.freeze([26.1049, 0.6485, 0]),
   p28a: Object.freeze([3.3695, 0.3959, 0]),
   pc12: Object.freeze([6.6416, 0.5288, 0]),
   pushback: Object.freeze([2.9536, 0.388, 0]),

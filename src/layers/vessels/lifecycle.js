@@ -102,6 +102,7 @@ export function createLifecycle({
     state.feed.loadingLabel = '';
     state.feed.lastUpdate = null;
     state.feed.count = 0;
+    vesselState.categoryCounts = new Map();
     state.feed.newestPositionAt = null;
     state.feed.transportStatus = null;
     state.feed.nextAttemptAt = null;
@@ -152,10 +153,11 @@ export function createLifecycle({
       this.source = source.label || this.source;
     },
 
-    init(viewer) {
+    init(viewer, { panel = null } = {}) {
       if (typeof vesselState._source?.getSnapshot !== 'function')
         throw new TypeError('A snapshot source is required');
       state.viewer = viewer;
+      vesselState._panel = panel;
       components.rendering.ensureCollections(viewer);
       vesselState._vesselOverlayHost.setVisible(
         VESSEL_OVERLAY_SOURCE_ID,
@@ -251,6 +253,7 @@ export function createLifecycle({
         state.preRenderRemover();
       }
       components.rendering.destroyModels();
+      vesselState._panel = null;
       resetState();
     },
   };

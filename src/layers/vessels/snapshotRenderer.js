@@ -76,6 +76,16 @@ export function createVesselSnapshotRenderer({
           const selected = record === state.selectedRecord;
           rendering.prepareRecordVisual(record);
           rendering.syncRecordIcon(record);
+          // Moved by its new type into a hidden category, the selected vessel lets go,
+          // as hiding its category does (controls.js), unless the bridge camera rides it.
+          if (
+            selected &&
+            record.id !== state.cockpitSubjectId &&
+            !rendering.categoryShown(record)
+          ) {
+            selection.clearVesselInspection();
+            return;
+          }
           if (record.id === state.trailId)
             tracking.appendSelectedVesselTrailFix(record);
           if (selected) {

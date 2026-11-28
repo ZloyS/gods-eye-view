@@ -4435,5 +4435,16 @@
   "Reference monitor": "基準測定器",
   "Needs {envVars} — add one in Provider Settings": "{envVars}のいずれかが必要です。プロバイダー設定で追加してください",
   "CABLE \u00b7 {name}": "ケーブル · {name}",
-  "LANDING POINT \u00b7 {name}": "陸揚げ地点 · {name}"
+  "LANDING POINT \u00b7 {name}": "陸揚げ地点 · {name}",
+  "COAST STATION": "海岸局",
+  "SAR AIRCRAFT": "捜索救助機",
+  "DISTRESS BEACON": "遭難信号ビーコン",
+  "PLATFORM": "海洋プラットフォーム",
+  "vessel category|Tankers": "タンカー",
+  "vessel category|Cargo": "貨物船",
+  "vessel category|Passenger": "旅客船",
+  "vessel category|Fishing": "漁船",
+  "vessel category|Service": "業務船",
+  "vessel category|Leisure": "レジャー",
+  "vessel category|Other": "その他"
 }

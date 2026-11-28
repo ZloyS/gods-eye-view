@@ -75,6 +75,7 @@ export function createTesting({
     state.feed.firstConnectStartedAt = options.firstConnectStartedAt ?? null;
     state.feed.firstConnectDeadline = options.firstConnectDeadline ?? null;
     state.interactionKeyTarget = options.interactionKeyTarget || null;
+    if (options.panel) vesselState._panel = options.panel;
   }
 
   /** Inject a host recorder for lifecycle/contract tests; null restores production. */

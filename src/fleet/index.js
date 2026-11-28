@@ -58,12 +58,19 @@ export {
 export {
   VESSEL_SPRITE_PX,
   aidSprite,
+  nonVesselSprite,
   vesselSprite,
 } from '../data/vesselSprites.js';
 export {
+  DEFAULT_VESSEL_CATEGORY_VISIBILITY,
+  VESSEL_CATEGORIES,
   VESSEL_KINDS,
   VESSEL_KIND_STYLES,
   isAidToNavigation,
+  isVessel,
+  nonVesselKind,
+  normalizeMmsi,
   normalizeVesselType,
+  vesselCategory,
   vesselKind,
 } from '../data/vesselTypes.js';

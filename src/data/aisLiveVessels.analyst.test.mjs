@@ -29,7 +29,9 @@ test('ais analyst record: full record maps every contract field', () => {
     speedKts: 12.3,
     courseDeg: 214.0,
     shipType: 'Cargo',
+    typeBroad: null,
     destination: 'OAKLAND',
+    virtual: false,
     navStatus: null, // /api/vessels does not surface NavigationalStatus
   });
 });

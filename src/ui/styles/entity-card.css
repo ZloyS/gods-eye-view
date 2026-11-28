@@ -2693,8 +2693,24 @@
   background: #c89bff;
 }
 
-.view-context__bar-key [data-tone='4']::before,
-.view-context__bar [data-tone='4'] {
+.view-context__bar [data-tone='4'],
+.view-context__bar-key [data-tone='4']::before {
+  background: #ff7a7a;
+}
+
+.view-context__bar [data-tone='5'],
+.view-context__bar-key [data-tone='5']::before {
+  background: #f2e35c;
+}
+
+.view-context__bar [data-tone='6'],
+.view-context__bar-key [data-tone='6']::before {
+  background: #5f8bff;
+}
+
+/* A folded "Other" tail. */
+.view-context__bar-key [data-tone='other']::before,
+.view-context__bar [data-tone='other'] {
   background: rgba(199, 214, 222, 0.35);
 }
 

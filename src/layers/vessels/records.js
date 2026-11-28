@@ -28,6 +28,8 @@ export function normalizeVessel(row) {
     reference: row.reference ?? id,
     imo: String(row.imo || ''),
     type: String(row.type || ''),
+    // The broad type beside a detailed `type`, '' when there is none.
+    typeBroad: String(row.typeBroad || ''),
     destination: String(row.destination || ''),
     // Hull length and beam (metres), null when unreported.
     length: positiveNumber(row.length),
@@ -182,6 +184,7 @@ export class VesselRecords {
         record.name = next.name;
         record.imo = next.imo;
         record.type = next.type;
+        record.typeBroad = next.typeBroad;
         record.destination = next.destination;
         record.length = next.length;
         record.beam = next.beam;

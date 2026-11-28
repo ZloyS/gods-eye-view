@@ -4960,5 +4960,16 @@
   "Reference monitor": "جهاز رصد مرجعي",
   "Needs {envVars} — add one in Provider Settings": "يحتاج إلى {envVars} — أضف أحدها في إعدادات المزوّدين",
   "CABLE \u00b7 {name}": "كابل · {name}",
-  "LANDING POINT \u00b7 {name}": "نقطة إنزال · {name}"
+  "LANDING POINT \u00b7 {name}": "نقطة إنزال · {name}",
+  "COAST STATION": "محطة ساحلية",
+  "SAR AIRCRAFT": "طائرة بحث وإنقاذ",
+  "DISTRESS BEACON": "منارة استغاثة",
+  "PLATFORM": "منصة بحرية",
+  "vessel category|Tankers": "ناقلات",
+  "vessel category|Cargo": "سفن شحن",
+  "vessel category|Passenger": "سفن ركاب",
+  "vessel category|Fishing": "سفن صيد",
+  "vessel category|Service": "سفن خدمة",
+  "vessel category|Leisure": "سفن نزهة",
+  "vessel category|Other": "أخرى"
 }

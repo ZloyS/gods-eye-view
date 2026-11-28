@@ -44,6 +44,9 @@ export function normalizeVesselObservation(row, reference = null, id = null) {
     name: String(row.name || row.input_name || mmsi || defaultVesselId(row)),
     imo: String(row.imo || ''),
     type: String(row.type_specific || row.type || ''),
+    // The broad type beside a detailed one ("Cargo" beside "Oil Products
+    // Tanker"), '' when the row names one type only.
+    typeBroad: row.type_specific && row.type ? String(row.type) : '',
     destination: String(row.destination || ''),
     // Hull length and beam (metres) when the source reports them.
     lengthM: positive(row.length),

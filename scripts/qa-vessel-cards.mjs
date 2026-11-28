@@ -162,7 +162,7 @@ const SYNTHETIC_OFFSETS = [
 ];
 
 function syntheticVesselRows(portKey, port) {
-  const mmsiBase = portKey === 'rotterdam' ? 990100000 : 990200000;
+  const mmsiBase = portKey === 'rotterdam' ? 244900000 : 366900000;
   return SYNTHETIC_OFFSETS.map(([lonOffset, latOffset], index) => ({
     mmsi: String(mmsiBase + index),
     name: `QA ${portKey.toUpperCase()} ${String(index + 1).padStart(2, '0')}`,

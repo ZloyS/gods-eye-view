@@ -4435,5 +4435,16 @@
   "Reference monitor": "参考监测仪",
   "Needs {envVars} — add one in Provider Settings": "需要 {envVars}，请在服务商设置中添加其中一个",
   "CABLE \u00b7 {name}": "海缆 · {name}",
-  "LANDING POINT \u00b7 {name}": "登陆点 · {name}"
+  "LANDING POINT \u00b7 {name}": "登陆点 · {name}",
+  "COAST STATION": "海岸电台",
+  "SAR AIRCRAFT": "搜救航空器",
+  "DISTRESS BEACON": "遇险示位标",
+  "PLATFORM": "海上平台",
+  "vessel category|Tankers": "油轮",
+  "vessel category|Cargo": "货船",
+  "vessel category|Passenger": "客船",
+  "vessel category|Fishing": "渔船",
+  "vessel category|Service": "服务船",
+  "vessel category|Leisure": "游艇",
+  "vessel category|Other": "其他"
 }

@@ -21,10 +21,7 @@ import {
   thinEvenly,
 } from '../results.js';
 import { roundHeadingDegrees } from '../../data/headingDegrees.js';
-import {
-  isAidToNavigation,
-  normalizeVesselType,
-} from '../../data/vesselTypes.js';
+import { isVessel, normalizeVesselType } from '../../data/vesselTypes.js';
 
 const MMSI_SCHEMA = Object.freeze({
   type: 'string',
@@ -156,8 +153,9 @@ export const vesselsInArea = defineTool({
     const rows = snapshot.records
       .filter(
         (record) =>
-          // A buoy or beacon in the feed is not a ship to count.
-          !isAidToNavigation(record) &&
+          // A buoy, station, SAR aircraft or distress beacon in the feed is
+          // not a ship to count.
+          isVessel(record) &&
           areaContains(area, { lat: record.latitude, lon: record.longitude }) &&
           (!wanted ||
             (vesselType(record.type) ?? '').toLowerCase().includes(wanted)),
@@ -217,7 +215,8 @@ export const findVessel = defineTool({
     }[key];
     const snapshot = await readVessels(services, signal);
     const rows = snapshot.records
-      .filter(matches)
+      // What is not a ship is not a vessel to find.
+      .filter((record) => isVessel(record) && matches(record))
       .map((record) => vesselRow(record));
     return {
       summary: rows.length

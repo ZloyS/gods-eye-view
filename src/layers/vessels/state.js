@@ -2,6 +2,7 @@ import { createVesselFeed } from './ingestion.js';
 import { VesselRecords } from './records.js';
 import { DEFAULT_AIS_RUNTIME, followsClock } from './policy.js';
 import { worldTimeFor } from '../../time/worldClock.js';
+import { DEFAULT_VESSEL_CATEGORY_VISIBILITY } from '../../data/vesselTypes.js';
 
 export function createVesselState({ source, services }) {
   const {
@@ -43,6 +44,15 @@ export function createVesselState({ source, services }) {
       : vesselState._aisRuntime.now();
 
   vesselState._aisSessionSequence = 0;
+
+  /** Each category shown or hidden by the row's toggles (`controls.js`). */
+  vesselState.categories = { ...DEFAULT_VESSEL_CATEGORY_VISIBILITY };
+
+  /** Records per category, shown or hidden, at the last visibility pass. */
+  vesselState.categoryCounts = new Map();
+
+  /** The panel's handle from init(), told when the row changes. */
+  vesselState._panel = null;
 
   /**
    * True once the EGM96 geoid grid has loaded (fire-and-forget warm at

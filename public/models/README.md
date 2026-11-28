@@ -27,6 +27,10 @@ How the layers use them:
   port or starboard hand, safe water, isolated danger, special mark), a red
   can when its type names no mark, at its built size and with no heading
   (`vesselModelSpec`, `aidToNavigationModel`).
+- An offshore platform is drawn as `other/offshore_platform.glb`, a jacket
+  platform built by
+  [`scripts/build-offshore-platform-model.py`](../../scripts/build-offshore-platform-model.py);
+  a distress beacon as the red can. Both are drawn as built, with no heading.
 - An aircraft model's origin is its axis; it stands that model's scaled
   clearance above the ground. A ship's origin is its waterline, and a transit
   or rail vehicle's the road or rail top (a monorail or gondola is raised by
