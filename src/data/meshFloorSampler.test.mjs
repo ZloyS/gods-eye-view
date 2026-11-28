@@ -20,7 +20,7 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import * as Cesium from 'cesium';
-import { sampleMeshFloorCells } from './meshFloorSampler.js';
+import { sampleMeshFloorCells, MAX_SAMPLE_DIST_KM } from './meshFloorSampler.js';
 import { bindRenderer } from '../render/rendererOf.js';
 import { resolveEllipsoidalGround } from './terrainHeights.js';
 import {
@@ -366,4 +366,22 @@ test('sampler: a spot refused while the DEM prior was evicted is probed again', 
   prior = 120.0;
   sampler.sampleMeshFloorCells(scene, [onDeck], opts);
   assert.equal(groundFloor.cachedMeshFloor(onDeck.lat, onDeck.lon), 129.0);
+});
+
+test('sampler: hands back the points it probed and kept no reading for', async () => {
+  reset();
+  const kept = nextSite();
+  const refused = nextSite();
+  const unloaded = nextSite();
+  for (const cell of [kept, refused, unloaded]) await seedDem(cell, 120.0);
+  const heights = new Map([[kept.lat, 137.0], [refused.lat, 400.0]]);
+  const scene = fakeScene(({ latitude }) =>
+    heights.get(+Cesium.Math.toDegrees(latitude).toFixed(3)));
+  const missed = sampleMeshFloorCells(scene, [kept, refused, unloaded], {
+    viewerLat: kept.lat,
+    viewerLon: kept.lon,
+  });
+  assert.deepEqual(missed, [refused, unloaded]);
+  assert.deepEqual(sampleMeshFloorCells(undefined, [kept]), []);
+  assert.equal(MAX_SAMPLE_DIST_KM, 15);
 });

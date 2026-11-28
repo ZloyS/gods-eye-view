@@ -388,12 +388,22 @@ export function createFlightSnapshotRenderer({
     // Field-test round 3: one batch warm of the viewer-proximate low-contact
     // floor cells collected in the loop (fire-and-forget, single-flight;
     // read synchronously by NEXT poll's clamp — the military-layer pattern).
-    warmGroundFloor(floorWarmPoints);
+    // The tracked history adds its cells: cold ones to the DEM warm, and
+    // ones the mesh can lift to the sampler, a few ahead of the contacts'.
+    // It is floored again on what they found.
+    const floorBatch = tracking._floorBatch(
+      floorWarmPoints,
+      viewerLatDeg,
+      viewerLonDeg,
+    ) ?? { warm: floorWarmPoints, mesh: floorWarmPoints };
+    warmGroundFloor(floorBatch.warm);
     // Round 4: sample the RENDERED mesh for those same cells (a few probes
     // per cell, budget-capped, viewer-proximate, google-3d regime only). Own
     // billboards/models are excluded so a vertical probe can't land on an
     // aircraft instead of the pavement.
-    rendering._sampleMeshFloor(floorWarmPoints, viewerLatDeg, viewerLonDeg);
+    tracking._refloorTrail(
+      rendering._sampleMeshFloor(floorBatch.mesh, viewerLatDeg, viewerLonDeg),
+    );
 
     // Round 5: the grounded exact-key warm that used to live here is gone —
     // see the note where _warmGroundedAircraftSurfaceCache was removed. The

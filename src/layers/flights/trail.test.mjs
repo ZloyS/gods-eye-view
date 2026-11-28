@@ -10,12 +10,23 @@ import {
   trailPairBreaks,
   trailTimeAt,
 } from '../../data/trailContinuity.js';
+import { createGroundFloor } from '../../services/groundFloor.js';
+import { createMeshFloorSampler } from '../../services/meshFloorSampler.js';
+import { bindRenderer } from '../../render/rendererOf.js';
+import { approxDistanceKm } from '../../data/approxDistance.js';
+import { normalizeAircraftTrack } from '../../sources/live/aircraft.js';
 
 const MINUTE = 60_000;
 const HOUR = 60 * MINUTE;
 const NM = 1852;
 
-function services({ trails, floor = () => null } = {}) {
+function services({
+  trails,
+  floor = () => null,
+  groundFloor = null,
+  geoidHeightM = 0,
+  meshFloor = {},
+} = {}) {
   const names = [
     'picking',
     'sprites',
@@ -33,9 +44,13 @@ function services({ trails, floor = () => null } = {}) {
   return {
     ...Object.fromEntries(names.map((name) => [name, {}])),
     groundSnap: { createGroundSnap: () => ({ clear() {} }) },
+    meshFloor,
     trails,
-    geoid: { ensureGeoidReady: async () => {}, geoidHeight: () => 0 },
-    groundFloor: {
+    geoid: {
+      ensureGeoidReady: async () => {},
+      geoidHeight: () => geoidHeightM,
+    },
+    groundFloor: groundFloor ?? {
       resolveGroundFloorCellsBounded: async () => {},
       cachedGroundFloor: floor,
       floorAltitudeM: (alt, ground) =>
@@ -99,12 +114,22 @@ function trackedHarness({
   head = null,
   placed = false,
   warmingUp = false,
+  source = null,
+  groundFloor = null,
+  geoidHeightM = 0,
+  meshFloor = {},
 } = {}) {
   const trail = recordingTrail();
-  const svc = services({ trails: trail, floor });
+  const svc = services({
+    trails: trail,
+    floor,
+    groundFloor,
+    geoidHeightM,
+    meshFloor,
+  });
   const flightState = createFlightState({
     services: svc,
-    source: {
+    source: source ?? {
       label: 'Fixture aircraft',
       async getTrack() {
         if (!waypoints) throw new Error('404');
@@ -551,4 +576,728 @@ test('a placed aircraft drawn behind the display delay has no trail ahead of it'
     ) < 1,
   );
   assert.ok(Cesium.Cartesian3.distance(drawn[1], behind) < 1e-6);
+});
+
+// A departure's history as the track endpoint sends it:
+// [time, latitude, longitude, baro_altitude, true_track, on_ground].
+// Taxi on the ground (no altitude, or 0), the take-off roll the feed sends at
+// baro 0 while no longer on the ground, then the climb.
+const T0_S = 1_795_870_000;
+const DEPARTURE_ROWS = [
+  [T0_S, 50.03, 8.54, null, 250, true],
+  [T0_S + 20, 50.0302, 8.538, 0, 250, true],
+  [T0_S + 40, 50.0304, 8.536, null, 250, true],
+  [T0_S + 60, 50.0306, 8.534, 0, 250, false],
+  [T0_S + 70, 50.0308, 8.53, 0, 250, false],
+  [T0_S + 90, 50.031, 8.52, 300, 250, false],
+  [T0_S + 110, 50.0312, 8.51, 600, 250, false],
+];
+/** Ellipsoidal sea level (the geoid height) and runway floor in these cases. */
+const SEA_LEVEL_M = 50;
+const FIELD_M = 106;
+/** Bare earth under a runway deck built out on columns: the DEM cells land
+ *  below the deck the rendered mesh shows. */
+const DEM_UNDER_DECK_M = 60;
+/** A short floor deadline, so a late floor needs no 1.2 s wait. */
+const DEADLINE_MS = 20;
+/** The airport, where the camera is. */
+const VIEWER = { lat: 50.03, lon: 8.54 };
+/** The mesh sampler's reach from the camera, as the app's sampler has it. */
+const MESH_FLOOR = { MAX_SAMPLE_DIST_KM: 15 };
+
+const wait = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
+const heightOf = (fix) =>
+  Cesium.Cartographic.fromCartesian(fix.position).height;
+const cellOf = ({ lat, lon }) => `${lat.toFixed(3)},${lon.toFixed(3)}`;
+
+/**
+ * The real ground-floor service over a terrain whose cells read `floorM`
+ * (null while cold). `lookup` answers each floor request.
+ */
+function floorFixture({ floorM = null, lookup = async () => {} } = {}) {
+  const state = { floorM, lookups: 0, cellsAsked: 0 };
+  const groundFloor = createGroundFloor({
+    terrain: {
+      cachedRealEllipsoidalGround: () => state.floorM,
+      async resolveEllipsoidalGround(cells) {
+        state.lookups += 1;
+        state.cellsAsked += cells.length;
+        await lookup(state);
+      },
+    },
+    floorResolveDeadlineMs: DEADLINE_MS,
+  });
+  return { state, groundFloor };
+}
+
+/** A floor lookup that stays open until `release()` warms every cell. */
+function lateFloorFixture() {
+  let release = () => {};
+  const fixture = floorFixture({
+    lookup: (state) =>
+      new Promise((resolve) => {
+        release = () => {
+          state.floorM = FIELD_M;
+          resolve();
+        };
+      }),
+  });
+  return { ...fixture, release: () => release() };
+}
+
+/** A tracked aircraft whose history is `rows`, at `nowMs` after it. */
+function historyHarness(
+  rows,
+  groundFloor,
+  { liveFixes = [], nowMs = (rows[rows.length - 1][0] + 300) * 1000 } = {},
+) {
+  const records = normalizeAircraftTrack(rows);
+  return trackedHarness({
+    nowMs,
+    liveFixes,
+    groundFloor,
+    meshFloor: MESH_FLOOR,
+    geoidHeightM: SEA_LEVEL_M,
+    source: {
+      label: 'Fixture aircraft',
+      async getTrack(id) {
+        if (id !== 'abc123') throw new Error('404');
+        return { records };
+      },
+    },
+  });
+}
+
+const departureHarness = (groundFloor, options) =>
+  historyHarness(DEPARTURE_ROWS, groundFloor, options);
+
+/** The climb: baro altitude plus the geoid, as before. */
+function assertClimb(fixes) {
+  const climb = fixes.slice(-2).map(heightOf);
+  assert.ok(Math.abs(climb[0] - (300 + SEA_LEVEL_M)) < 0.5, `${climb[0]}`);
+  assert.ok(Math.abs(climb[1] - (600 + SEA_LEVEL_M)) < 0.5, `${climb[1]}`);
+}
+
+/** Taxi and roll on the floor, and the whole departure one line. */
+function assertOnFloor({ flightState, trail }, groundFloor, groundM = FIELD_M) {
+  const fixes = flightState._trailFixes;
+  assert.equal(fixes.length, DEPARTURE_ROWS.length);
+  const floorM = groundM + groundFloor.GROUND_FLOOR_LIFT_M;
+  for (const fix of fixes.slice(0, 5))
+    assert.ok(Math.abs(heightOf(fix) - floorM) < 0.01, `${heightOf(fix)}`);
+  for (const fix of fixes)
+    assert.ok(heightOf(fix) >= floorM - 0.01, 'no vertex under the floor');
+  assertClimb(fixes);
+  // Taxi, the roll along the runway and the climb out: no stretch missing.
+  assert.deepEqual(
+    trail.last().map((segment) => segment.length),
+    [DEPARTURE_ROWS.length],
+  );
+}
+
+/** One poll's floor work, the way the layer's poll does it. */
+function poll(harness, groundFloor, { contacts = [], meshM = null } = {}) {
+  const batch = harness.tracking._floorBatch(contacts, VIEWER.lat, VIEWER.lon);
+  groundFloor.warmGroundFloor(batch.warm);
+  const missed = [];
+  if (meshM != null)
+    for (const point of batch.mesh)
+      if (
+        !groundFloor.reportValidatedMeshFloorCell(point.lat, point.lon, meshM)
+      )
+        missed.push(point);
+  return { batch, redrawn: harness.tracking._refloorTrail(missed) };
+}
+
+test('a departure history with a cold floor draws nothing at sea level and breaks where the height is unknown', async () => {
+  const { groundFloor } = floorFixture();
+  const harness = departureHarness(groundFloor);
+  harness.tracking._startTrail('abc123');
+  await settle();
+
+  const fixes = harness.flightState._trailFixes;
+  for (const fix of fixes)
+    assert.ok(heightOf(fix) > SEA_LEVEL_M + 1, 'a vertex at sea level');
+  // Taxi and roll have no height: they are left out and the line breaks.
+  assert.equal(fixes.length, 2);
+  assert.equal(fixes[0].breakBefore, true);
+  assertClimb(fixes);
+  assert.deepEqual(
+    harness.trail.last().map((segment) => segment.length),
+    [2],
+  );
+});
+
+test('a departure history with a warm floor draws taxi, roll and climb as one line on the floor', async () => {
+  const { groundFloor } = floorFixture({ floorM: FIELD_M });
+  const harness = departureHarness(groundFloor);
+  harness.tracking._startTrail('abc123');
+  await settle();
+  assertOnFloor(harness, groundFloor);
+});
+
+test('an approach whose last reports read 0 or below reaches touchdown', async () => {
+  const rows = [600, 300, 100, -10, -40].map((baro, i) => [
+    T0_S + i * 20,
+    50.05 - i * 0.002,
+    8.54,
+    baro,
+    180,
+    false,
+  ]);
+  rows.push([T0_S + 100, 50.04, 8.54, null, 180, true]);
+  rows.push([T0_S + 120, 50.0395, 8.54, null, 180, true]);
+  const { groundFloor } = floorFixture({ floorM: FIELD_M });
+  const harness = historyHarness(rows, groundFloor);
+  harness.tracking._startTrail('abc123');
+  await settle();
+  const segments = harness.trail.last();
+  assert.deepEqual(
+    segments.map((segment) => segment.length),
+    [rows.length],
+  );
+  const touchdown = harness.flightState._trailFixes[rows.length - 1];
+  assert.equal(segments[0][segments[0].length - 1], touchdown.position);
+});
+
+test('a report at 0 in the middle of a cruise breaks the line and draws no dive to the ground', async () => {
+  const rows = [10_000, 10_000, 0, 10_000, 10_000].map((baro, i) => [
+    T0_S + i * 60,
+    50,
+    8 + i * 0.12,
+    baro,
+    90,
+    false,
+  ]);
+  const { groundFloor } = floorFixture({ floorM: FIELD_M });
+  const harness = historyHarness(rows, groundFloor);
+  harness.tracking._startTrail('abc123');
+  await settle();
+  const segments = harness.trail.last();
+  assert.deepEqual(
+    segments.map((segment) => segment.length),
+    [2, 2],
+  );
+  for (const segment of segments)
+    for (const position of segment)
+      assert.ok(Cesium.Cartographic.fromCartesian(position).height > 9_000);
+});
+
+test('a ground report with an altitude keeps it while the floor is cold, and stands on the floor once known', async () => {
+  const rows = [[T0_S, 50.03, 8.54, 120, 250, true]];
+  const cold = historyHarness(rows, floorFixture().groundFloor);
+  cold.tracking._startTrail('abc123');
+  await settle();
+  assert.equal(cold.flightState._trailFixes.length, 1);
+  assert.ok(
+    Math.abs(heightOf(cold.flightState._trailFixes[0]) - (120 + SEA_LEVEL_M)) <
+      0.5,
+  );
+
+  const { groundFloor } = floorFixture({ floorM: FIELD_M });
+  const warm = historyHarness(rows, groundFloor);
+  warm.tracking._startTrail('abc123');
+  await settle();
+  assert.ok(
+    Math.abs(
+      heightOf(warm.flightState._trailFixes[0]) -
+        (FIELD_M + groundFloor.GROUND_FLOOR_LIFT_M),
+    ) < 0.01,
+  );
+});
+
+test('a floor that lands after the deadline re-floors the history once and redraws it', async () => {
+  const { state, groundFloor, release } = lateFloorFixture();
+  const harness = departureHarness(groundFloor);
+  harness.tracking._startTrail('abc123');
+  await wait(DEADLINE_MS + 30);
+
+  // Painted cold at the deadline.
+  assert.equal(harness.flightState._trailFixes.length, 2);
+  const draws = harness.trail.calls.length;
+
+  release();
+  await settle();
+  assertOnFloor(harness, groundFloor);
+  assert.equal(harness.trail.calls.length, draws + 1);
+  assert.equal(state.lookups, 1);
+
+  await wait(50);
+  assert.equal(harness.trail.calls.length, draws + 1, 'one re-floor only');
+});
+
+test('a late floor does not touch the trail of a newer selection or a cleared track', async () => {
+  for (const moveOn of [
+    ({ tracking, flightState }) => {
+      flightState._trackedIcao = 'def456';
+      tracking._startTrail('def456');
+    },
+    ({ tracking }) => tracking._clearTrail(),
+  ]) {
+    const { groundFloor, release } = lateFloorFixture();
+    const harness = departureHarness(groundFloor);
+    harness.tracking._startTrail('abc123');
+    await wait(DEADLINE_MS + 30);
+    moveOn(harness);
+    await settle();
+    const draws = harness.trail.calls.length;
+
+    release();
+    await settle();
+    assert.deepEqual(harness.flightState._trailFixes, []);
+    assert.equal(harness.trail.calls.length, draws);
+  }
+});
+
+test('a floor lookup that failed is asked again by a later poll, and taxi and roll appear', async () => {
+  let fail = true;
+  const { groundFloor } = floorFixture({
+    lookup: async (state) => {
+      await null;
+      if (fail) throw new Error('502');
+      state.floorM = FIELD_M;
+    },
+  });
+  const harness = departureHarness(groundFloor);
+  harness.tracking._startTrail('abc123');
+  await settle();
+  assert.equal(harness.flightState._trailFixes.length, 2);
+
+  fail = false;
+  const { batch, redrawn } = poll(harness, groundFloor);
+  assert.equal(redrawn, false, 'the lookup has not answered yet');
+  // The cold cells of the waypoints with no height of their own.
+  assert.deepEqual(
+    new Set(batch.warm.map(cellOf)),
+    new Set(
+      DEPARTURE_ROWS.slice(0, 5).map(([, lat, lon]) => cellOf({ lat, lon })),
+    ),
+  );
+  assert.equal(batch.mesh.length, 0, 'a cold cell is not sampled');
+  await settle();
+  assert.equal(harness.tracking._refloorTrail(), true);
+  assertOnFloor(harness, groundFloor);
+});
+
+test('mesh readings at a runway deck lift the history off the bare earth below it, once', async () => {
+  const { groundFloor } = floorFixture({ floorM: DEM_UNDER_DECK_M });
+  const harness = departureHarness(groundFloor);
+  harness.tracking._startTrail('abc123');
+  await settle();
+  assertOnFloor(harness, groundFloor, DEM_UNDER_DECK_M);
+
+  // The poll asks the mesh under the waypoints that rest on the floor:
+  // taxi and roll, newest first, and not the climb.
+  const draws = harness.trail.calls.length;
+  const { batch, redrawn } = poll(harness, groundFloor, { meshM: FIELD_M });
+  assert.deepEqual(
+    batch.mesh.map(({ lat, lon }) => [lat, lon]),
+    DEPARTURE_ROWS.slice(0, 5)
+      .reverse()
+      .map(([, lat, lon]) => [lat, lon]),
+  );
+  assert.equal(redrawn, true);
+  assertOnFloor(harness, groundFloor, FIELD_M);
+  assert.equal(harness.trail.calls.length, draws + 1);
+
+  // The next poll finds every cell read: it offers none and draws nothing.
+  const next = poll(harness, groundFloor, { meshM: FIELD_M });
+  assert.equal(next.batch.mesh.length, 0);
+  assert.equal(next.redrawn, false);
+  assert.equal(harness.trail.calls.length, draws + 1);
+});
+
+test('a re-floor keeps every position whose height did not change', async () => {
+  const { groundFloor } = floorFixture({ floorM: DEM_UNDER_DECK_M });
+  const harness = departureHarness(groundFloor);
+  harness.tracking._startTrail('abc123');
+  await settle();
+  const before = harness.flightState._trailFixes.map((fix) => fix.position);
+
+  // One cell is read: only its waypoint moves.
+  const [, lat, lon] = DEPARTURE_ROWS[0];
+  assert.ok(groundFloor.reportValidatedMeshFloorCell(lat, lon, FIELD_M));
+  assert.equal(harness.tracking._refloorTrail(), true);
+  const after = harness.flightState._trailFixes.map((fix) => fix.position);
+  assert.notEqual(after[0], before[0]);
+  for (let i = 1; i < before.length; i++)
+    assert.equal(after[i], before[i], `position ${i} was rebuilt`);
+
+  // A reading within a few centimetres of the last changes nothing.
+  assert.ok(groundFloor.reportValidatedMeshFloorCell(lat, lon, FIELD_M - 0.1));
+  assert.equal(harness.tracking._refloorTrail(), false);
+});
+
+test('a long taxi has its older cells offered once the newer ones are read, and cells out of range or just missed wait', async () => {
+  const rows = Array.from({ length: 70 }, (_, i) => [
+    T0_S + i * 20,
+    50.03 + i * 0.001,
+    8.54,
+    null,
+    0,
+    true,
+  ]);
+  const { groundFloor } = floorFixture({ floorM: DEM_UNDER_DECK_M });
+  const harness = historyHarness(rows, groundFloor);
+  harness.tracking._startTrail('abc123');
+  await settle();
+  const cells = (batch) => batch.mesh.map(cellOf);
+  const rowCells = rows.map(([, lat, lon]) => cellOf({ lat, lon }));
+
+  // A camera 100 km away is past the sampler's reach: nothing to offer.
+  assert.deepEqual(
+    harness.tracking._floorBatch([], VIEWER.lat + 0.9, VIEWER.lon).mesh,
+    [],
+  );
+
+  // The newest 40 first; the 8 newest come back with no reading.
+  const first = harness.tracking._floorBatch([], VIEWER.lat, VIEWER.lon);
+  assert.deepEqual(cells(first), rowCells.slice(30).reverse());
+  const missed = first.mesh.slice(0, 8);
+  for (const point of first.mesh.slice(8))
+    groundFloor.reportValidatedMeshFloorCell(point.lat, point.lon, FIELD_M);
+  harness.tracking._refloorTrail(missed);
+
+  // Next: the 30 older cells; the missed ones wait their turn.
+  const second = harness.tracking._floorBatch([], VIEWER.lat, VIEWER.lon);
+  assert.deepEqual(cells(second), rowCells.slice(0, 30).reverse());
+  for (const point of second.mesh)
+    groundFloor.reportValidatedMeshFloorCell(point.lat, point.lon, FIELD_M);
+  harness.tracking._refloorTrail([]);
+
+  // Polls later the missed cells are offered again.
+  let again = [];
+  for (let i = 0; i < 10 && !again.length; i++) {
+    again = cells(harness.tracking._floorBatch([], VIEWER.lat, VIEWER.lon));
+    harness.tracking._refloorTrail([]);
+  }
+  assert.deepEqual(again, missed.map(cellOf));
+});
+
+test('at a busy airport the history is probed on the first poll, and the contacts keep most of the budget', async () => {
+  const { groundFloor } = floorFixture({ floorM: DEM_UNDER_DECK_M });
+  const sampler = createMeshFloorSampler({ groundFloor });
+  const asked = [];
+  const viewer = { isDestroyed: () => false };
+  bindRenderer(viewer, {
+    capabilities: { has: (name) => name === 'sampleHeight' },
+    camera: { pose: () => ({ ...VIEWER, height: 900 }) },
+    globe: { isGlobeVisible: () => false, isSettled: () => true },
+    query: {
+      sampleHeightNow(point) {
+        asked.push(cellOf(point));
+        return FIELD_M;
+      },
+    },
+  });
+  const contacts = Array.from({ length: 300 }, (_, i) => ({
+    lat: 50.01 + Math.floor(i / 20) * 0.001,
+    lon: 8.56 + (i % 20) * 0.001,
+  }));
+  const harness = departureHarness(groundFloor);
+  harness.tracking._startTrail('abc123');
+  await settle();
+
+  const batch = harness.tracking._floorBatch(contacts, VIEWER.lat, VIEWER.lon);
+  const missed = sampler.sampleMeshFloorCells(viewer, batch.mesh, {
+    viewerLat: VIEWER.lat,
+    viewerLon: VIEWER.lon,
+  });
+  const trailCells = new Set(
+    DEPARTURE_ROWS.slice(0, 5).map(([, lat, lon]) => cellOf({ lat, lon })),
+  );
+  const trailProbes = asked.filter((cell) => trailCells.has(cell)).length;
+  assert.equal(trailProbes, 5);
+  assert.equal(asked.length, 40);
+  assert.equal(harness.tracking._refloorTrail(missed), true);
+  assertOnFloor(harness, groundFloor, FIELD_M);
+});
+
+test('a re-floor with live reports keeps them once each and judges the join again', async () => {
+  // A history that ends on the runway, and two live reports after it.
+  const rows = DEPARTURE_ROWS.slice(0, 5);
+  const liveFixes = [1, 2].map((i) => ({
+    timeMs: (T0_S + 70 + i * 20) * 1000,
+    lat: 50.0308,
+    lon: 8.53 - i * 0.005,
+  }));
+  const { groundFloor, release } = lateFloorFixture();
+  const harness = historyHarness(rows, groundFloor, {
+    liveFixes,
+    nowMs: (T0_S + 200) * 1000,
+  });
+  harness.tracking._startTrail('abc123');
+  await wait(DEADLINE_MS + 30);
+  const live = harness.flightState._trailFixes.slice();
+  assert.equal(live.length, 2, 'cold: only the live reports');
+  assert.equal(
+    live[0].breakBefore,
+    true,
+    'the cold history breaks before them',
+  );
+
+  release();
+  await settle();
+  const fixes = harness.flightState._trailFixes;
+  assert.equal(fixes.length, rows.length + 2);
+  assert.equal(new Set(fixes).size, fixes.length);
+  assert.equal(fixes[rows.length], live[0]);
+  assert.equal(fixes[rows.length + 1], live[1]);
+  assert.equal(
+    live[0].breakBefore,
+    false,
+    'the roll now joins the first live report',
+  );
+});
+
+test('a re-floor past the point limit keeps the newest points once each', async () => {
+  const cruise = Array.from({ length: 2_030 }, (_, i) => [
+    T0_S + i * 60,
+    40 + i * 0.002,
+    -170 + i * 0.12,
+    10_000,
+    90,
+    false,
+  ]);
+  const end = cruise[cruise.length - 1][0];
+  const taxi = Array.from({ length: 20 }, (_, i) => [
+    end + 600 + i * 20,
+    50.03 + i * 0.0002,
+    8.54,
+    null,
+    0,
+    true,
+  ]);
+  const rows = cruise.concat(taxi);
+  const liveFixes = [1, 2, 3].map((i) => ({
+    timeMs: (taxi[19][0] + i * 20) * 1000,
+    lat: 50.034 + i * 0.0002,
+    lon: 8.54,
+  }));
+  const { state, groundFloor, release } = lateFloorFixture();
+  const harness = historyHarness(rows, groundFloor, { liveFixes });
+  harness.tracking._startTrail('abc123');
+  await wait(DEADLINE_MS + 30);
+  // Only the newest TRAIL_MAX_POINTS waypoints are looked up and kept.
+  assert.ok(state.cellsAsked <= TRAIL_MAX_POINTS, `${state.cellsAsked}`);
+
+  release();
+  await settle();
+  const fixes = harness.flightState._trailFixes;
+  assert.equal(fixes.length, TRAIL_MAX_POINTS);
+  assert.equal(new Set(fixes).size, fixes.length);
+  assert.equal(fixes[fixes.length - 1].timeMs, liveFixes[2].timeMs);
+  const floorM = FIELD_M + groundFloor.GROUND_FLOOR_LIFT_M;
+  const ground = fixes.slice(-23, -3);
+  for (const fix of ground)
+    assert.ok(Math.abs(heightOf(fix) - floorM) < 0.01, `${heightOf(fix)}`);
+});
+
+test('mesh readings that land after a newer selection leave its trail alone', async () => {
+  const { groundFloor } = floorFixture({ floorM: DEM_UNDER_DECK_M });
+  const harness = departureHarness(groundFloor);
+  harness.tracking._startTrail('abc123');
+  await settle();
+  const points = harness.tracking._floorBatch([], VIEWER.lat, VIEWER.lon).mesh;
+
+  harness.flightState._trackedIcao = 'def456';
+  harness.tracking._startTrail('def456');
+  await settle();
+  const draws = harness.trail.calls.length;
+  const contacts = [{ lat: 1, lon: 1 }];
+  const batch = harness.tracking._floorBatch(contacts, VIEWER.lat, VIEWER.lon);
+  assert.deepEqual(batch, { warm: contacts, mesh: contacts });
+
+  for (const point of points)
+    groundFloor.reportValidatedMeshFloorCell(point.lat, point.lon, FIELD_M);
+  assert.equal(harness.tracking._refloorTrail(), false);
+  assert.deepEqual(harness.flightState._trailFixes, []);
+  assert.equal(harness.trail.calls.length, draws);
+});
+
+test('with no mesh to read the history stays on the bare-earth floor', async () => {
+  const { groundFloor } = floorFixture({ floorM: DEM_UNDER_DECK_M });
+  const harness = departureHarness(groundFloor);
+  harness.tracking._startTrail('abc123');
+  await settle();
+  const draws = harness.trail.calls.length;
+
+  // A renderer that cannot sample: no reading lands.
+  assert.equal(harness.tracking._refloorTrail(), false);
+  // A globe stack (no 3D tiles): nothing is offered, and readings do not apply.
+  groundFloor.setMeshFloorPreferred(false);
+  const contacts = [{ lat: 1, lon: 1 }];
+  assert.deepEqual(
+    harness.tracking._floorBatch(contacts, VIEWER.lat, VIEWER.lon),
+    { warm: contacts, mesh: contacts },
+  );
+  for (const [, lat, lon] of DEPARTURE_ROWS)
+    groundFloor.reportValidatedMeshFloorCell(lat, lon, FIELD_M);
+  assert.equal(harness.tracking._refloorTrail(), false);
+  assertOnFloor(harness, groundFloor, DEM_UNDER_DECK_M);
+  assert.equal(harness.trail.calls.length, draws);
+});
+
+/** A floor lookup that fails until `heal()`, then warms every cell. */
+function healingFloorFixture() {
+  let fail = true;
+  const fixture = floorFixture({
+    lookup: async (state) => {
+      await null;
+      if (fail) throw new Error('502');
+      state.floorM = FIELD_M;
+    },
+  });
+  return { ...fixture, heal: () => (fail = false) };
+}
+
+test('a ground report with an altitude on a cold floor is asked again and lands on the floor, on a globe and on 3D tiles', async () => {
+  for (const preferred of [false, true]) {
+    const rows = [
+      [T0_S, 50.03, 8.54, 120, 250, true],
+      [T0_S + 20, 50.0302, 8.538, 125, 250, true],
+    ];
+    const { groundFloor, heal } = healingFloorFixture();
+    groundFloor.setMeshFloorPreferred(preferred);
+    const harness = historyHarness(rows, groundFloor);
+    harness.tracking._startTrail('abc123');
+    await settle();
+    const heights = () => harness.flightState._trailFixes.map(heightOf);
+    assert.ok(Math.abs(heights()[0] - (120 + SEA_LEVEL_M)) < 0.5);
+
+    heal();
+    const { batch } = poll(harness, groundFloor);
+    assert.deepEqual(
+      new Set(batch.warm.map(cellOf)),
+      new Set(rows.map(([, lat, lon]) => cellOf({ lat, lon }))),
+      `cold cells asked again (mesh preferred: ${preferred})`,
+    );
+    await settle();
+    assert.equal(harness.tracking._refloorTrail(), true);
+    for (const height of heights())
+      assert.ok(
+        Math.abs(height - (FIELD_M + groundFloor.GROUND_FLOOR_LIFT_M)) < 0.01,
+        `${height}`,
+      );
+  }
+});
+
+test('an overhead pass later over the departure cell still has its ground cell sampled and lifted', async () => {
+  const rows = [
+    [T0_S, 50.03, 8.54, null, 90, true],
+    [T0_S + 20, 50.03, 8.542, null, 90, true],
+    // Ten minutes later, 3 km up over the first ground cell.
+    [T0_S + 600, 50.0302, 8.5402, 3_000, 90, false],
+  ];
+  const { groundFloor } = floorFixture({ floorM: DEM_UNDER_DECK_M });
+  const harness = historyHarness(rows, groundFloor);
+  harness.tracking._startTrail('abc123');
+  await settle();
+  const { batch, redrawn } = poll(harness, groundFloor, { meshM: FIELD_M });
+  assert.deepEqual(batch.mesh.map(cellOf), [
+    cellOf({ lat: 50.03, lon: 8.542 }),
+    cellOf({ lat: 50.03, lon: 8.54 }),
+  ]);
+  assert.equal(redrawn, true);
+  const ground = harness.flightState._trailFixes[0];
+  assert.ok(
+    Math.abs(heightOf(ground) - (FIELD_M + groundFloor.GROUND_FLOOR_LIFT_M)) <
+      0.01,
+    `${heightOf(ground)}`,
+  );
+});
+
+test('a cold roll cell is asked again when a later high pass shares it', async () => {
+  const rows = [
+    [T0_S, 50.03, 8.54, null, 90, true],
+    [T0_S + 20, 50.03, 8.544, 0, 90, false],
+    [T0_S + 40, 50.031, 8.55, 400, 90, false],
+    // Later, high over the roll cell.
+    [T0_S + 900, 50.0302, 8.5441, 3_000, 90, false],
+  ];
+  const { groundFloor } = healingFloorFixture();
+  const harness = historyHarness(rows, groundFloor);
+  harness.tracking._startTrail('abc123');
+  await settle();
+  const { batch } = poll(harness, groundFloor);
+  assert.ok(
+    batch.warm.map(cellOf).includes(cellOf({ lat: 50.03, lon: 8.544 })),
+  );
+});
+
+test('a live report appended after the history joined an empty trail survives the next re-floor', async () => {
+  const { groundFloor, release } = lateFloorFixture();
+  const harness = departureHarness(groundFloor);
+  harness.tracking._startTrail('abc123');
+  await wait(DEADLINE_MS + 30);
+  assert.equal(harness.flightState._trailFixes.length, 2);
+
+  const liveMs = (T0_S + 130) * 1000;
+  harness.tracking._appendTrailFix(
+    Cesium.Cartesian3.fromDegrees(8.5, 50.0314, 800),
+    liveMs,
+  );
+  release();
+  await settle();
+  const fixes = harness.flightState._trailFixes;
+  assert.equal(fixes.length, DEPARTURE_ROWS.length + 1);
+  assert.equal(fixes[fixes.length - 1].timeMs, liveMs);
+});
+
+test('a dropout far in time and distance from a ground report stands alone instead of running along the ground', async () => {
+  const rows = [
+    [T0_S, 50.03, 8.54, null, 0, true],
+    // Ten minutes and 70 km later, no altitude; then the cruise.
+    [T0_S + 600, 50.66, 8.54, 0, 0, false],
+    [T0_S + 660, 50.7, 8.54, 10_000, 0, false],
+    [T0_S + 720, 50.74, 8.54, 10_000, 0, false],
+  ];
+  const { groundFloor } = floorFixture({ floorM: FIELD_M });
+  const harness = historyHarness(rows, groundFloor);
+  harness.tracking._startTrail('abc123');
+  await settle();
+  const segments = harness.trail.last();
+  assert.deepEqual(
+    segments.map((segment) => segment.length),
+    [2],
+  );
+  for (const position of segments[0])
+    assert.ok(Cesium.Cartographic.fromCartesian(position).height > 9_000);
+});
+
+test('a cell whose centre is past the sampler reach is not offered, though its waypoint is within it', async () => {
+  const lat = VIEWER.lat + 0.1346;
+  const cellLat = Number(lat.toFixed(3));
+  const reach = MESH_FLOOR.MAX_SAMPLE_DIST_KM;
+  assert.ok(approxDistanceKm(VIEWER.lat, VIEWER.lon, lat, VIEWER.lon) < reach);
+  assert.ok(
+    approxDistanceKm(VIEWER.lat, VIEWER.lon, cellLat, VIEWER.lon) > reach,
+  );
+  const rows = [[T0_S, lat, VIEWER.lon, null, 0, true]];
+  const { groundFloor } = floorFixture({ floorM: DEM_UNDER_DECK_M });
+  const harness = historyHarness(rows, groundFloor);
+  harness.tracking._startTrail('abc123');
+  await settle();
+  assert.deepEqual(
+    harness.tracking._floorBatch([], VIEWER.lat, VIEWER.lon).mesh,
+    [],
+  );
+});
+
+test('a floor service without the mesh members still takes the poll floor work', async () => {
+  const t0 = Date.UTC(2026, 10, 8, 0, 0);
+  const waypoints = leg(t0, 40, 10, 3);
+  waypoints[1] = waypoint(waypoints[1].observedAtMs, 40, 10.12, null);
+  // The default harness floor service: no cell, mesh or reach members.
+  const { tracking } = trackedHarness({
+    waypoints,
+    nowMs: t0 + 10 * MINUTE,
+    floor: () => 120,
+  });
+  tracking._startTrail('abc123');
+  await settle();
+  const contacts = [{ lat: 1, lon: 1 }];
+  const batch = tracking._floorBatch(contacts, 40, 10);
+  assert.deepEqual(batch.warm, contacts);
+  assert.equal(tracking._refloorTrail(), false);
 });

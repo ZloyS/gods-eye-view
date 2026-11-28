@@ -41,6 +41,9 @@ import {
   COCKPIT_AIR_ALL_KEEP_M,
   COCKPIT_AIR_PROX_ADD_M,
   COCKPIT_AIR_PROX_KEEP_M,
+  TRAIL_FLOOR_MAX_CELLS,
+  TRAIL_FLOOR_PROBE_SHARE,
+  TRAIL_FLOOR_RETRY_POLLS,
   TRAIL_MAX_POINTS,
   TRAIL_COLOR,
   STALE_ALPHA,
@@ -60,6 +63,8 @@ import {
   trailTimeAt,
 } from '../../data/trailContinuity.js';
 import { roundHeadingDegrees } from '../../data/headingDegrees.js';
+import { approxDistanceKm } from '../../data/approxDistance.js';
+import { STALE_HOLD_MAX_HEIGHT_M } from '../../data/motionModel.js';
 import { entityRecord } from '../../data/entityRecords.js';
 
 /**
@@ -89,8 +94,22 @@ export function createTracking({
     services.aircraftPresentation;
   const { createTrail } = services.trails;
   const { ensureGeoidReady, geoidHeight } = services.geoid;
-  const { resolveGroundFloorCellsBounded, floorAltitudeM, cachedGroundFloor } =
-    services.groundFloor;
+  const {
+    resolveGroundFloorCellsBounded,
+    floorAltitudeM,
+    cachedGroundFloor,
+    // Members an application's floor service may predate: the history's
+    // floor work then reads the DEM cell grid and no mesh.
+    coarseFloorCoord = (lat, lon) => ({
+      lat: Number(lat.toFixed(3)),
+      lon: Number(lon.toFixed(3)),
+    }),
+    cachedMeshFloor = () => null,
+    meshFloorPreferred = () => true,
+    MESH_FLOOR_ABOVE_PRIOR_M = 0,
+  } = services.groundFloor;
+  /** How far from the camera the mesh sampler reads (km). */
+  const meshReachKm = services.meshFloor?.MAX_SAMPLE_DIST_KM ?? Infinity;
   const { clearFocusTarget } = services.focus;
   const { isMilitaryLayerActive, isMilitaryIcao } = services.militaryRegistry;
   const { trackedLabelModelFromText, refreshTrackedReadout } = services.readout;
@@ -508,6 +527,7 @@ export function createTracking({
 
   function _startTrail(icao24) {
     flightState._trailBackfillToken += 1;
+    flightState._trailFloor = null;
     flightState._trailFixes = [];
     const history = flightState._positionHistory.get(icao24) || [];
     // Seed every report. The body only draws those at or before the delayed
@@ -615,6 +635,10 @@ export function createTracking({
       });
     }
     if (!parsed.length) return;
+    // Only the newest TRAIL_MAX_POINTS are ever drawn: the rest is neither
+    // looked up nor kept.
+    if (parsed.length > TRAIL_MAX_POINTS)
+      parsed.splice(0, parsed.length - TRAIL_MAX_POINTS);
 
     // Field-test fix (WAKE01 trail-underground, 2026-07-06 — mirror of
     // militaryFlights.js): resolve the coarse ellipsoidal ground along the track
@@ -625,47 +649,305 @@ export function createTracking({
     // resolve is BOUNDED (≤1.2 s), not a blocking await — a cold Re:Earth
     // lookup across a long path could stall the paint for seconds-to-timeout.
     // Paint with whatever cells are warm; the resolve keeps filling the cache
-    // in the background for the next paint/select.
-    await resolveGroundFloorCellsBounded(parsed);
+    // in the background, and the history is floored again once it lands.
+    const floorLookup = await resolveGroundFloorCellsBounded(parsed);
     // Re-check the backfill token after the await (same guard as post-fetch):
     // tracking may have moved on while the terrain race was in flight.
-    if (
-      token !== flightState._trailBackfillToken ||
-      icao24 !== flightState._trackedIcao
-    )
-      return;
+    const current = () =>
+      token === flightState._trailBackfillToken &&
+      icao24 === flightState._trackedIcao;
+    if (!current()) return;
 
-    // Every waypoint is kept, each leg its own segment. A ground waypoint is
-    // at altitude 0, floored at the ground. A waypoint with no altitude is a
-    // break on both sides: it sits on the ground where the floor is known and
-    // is skipped otherwise; a skipped point still breaks the line.
-    const backfill = trailBackfillFixes(
-      parsed.map(({ lat, lon, baroAlt, onGround, timeMs }) => {
-        const known = Number.isFinite(baroAlt) ? baroAlt : onGround ? 0 : null;
-        const altM = floorAltitudeM(
-          known == null ? null : known + geoidHeight(lat, lon),
-          cachedGroundFloor(lat, lon),
-        );
-        return {
-          position: altM == null ? null : fromDegrees(lon, lat, altM),
+    // Every waypoint is kept, each leg its own segment. Only a positive baro
+    // altitude is a height: the feed sends 0 (or nothing) for a waypoint with
+    // no altitude, the take-off roll included, and drawing that at sea level
+    // puts it under the field. A ground waypoint stands on the floor; while
+    // the floor is cold it keeps its own positive baro, as any report does,
+    // and is skipped without one. A waypoint in the air with no altitude
+    // rests on the floor too (see `layout`).
+    const waypoints = parsed.map(({ lat, lon, baroAlt, onGround, timeMs }) => {
+      const heightM = baroAlt > 0 ? baroAlt + geoidHeight(lat, lon) : null;
+      return {
+        lat,
+        lon,
+        cell: null,
+        key: null,
+        timeMs,
+        onGround,
+        heightM,
+        noHeight: !onGround && heightM == null,
+        // Stands on the floor once it is known: cold until then.
+        restsOnFloor: onGround || heightM == null,
+      };
+    });
+    const count = waypoints.length;
+    // Whether waypoint `i` is on the ground or low over a known floor
+    // (within STALE_HOLD_MAX_HEIGHT_M, the height a contact counts as landing
+    // or taking off at), and close enough to waypoint `end` of a run with no
+    // altitude to be the same take-off or landing: at most RUN_JOIN_MAX_MS
+    // and RUN_JOIN_MAX_KM from it.
+    const RUN_JOIN_MAX_MS = 120_000;
+    const RUN_JOIN_MAX_KM = 3;
+    const nearFloor = (i, end, floors) => {
+      const waypoint = waypoints[i];
+      if (!waypoint) return false;
+      const other = waypoints[end];
+      if (
+        !(Math.abs(waypoint.timeMs - other.timeMs) <= RUN_JOIN_MAX_MS) ||
+        !(
+          approxDistanceKm(waypoint.lat, waypoint.lon, other.lat, other.lon) <=
+          RUN_JOIN_MAX_KM
+        )
+      )
+        return false;
+      if (waypoint.onGround) return true;
+      return (
+        waypoint.heightM != null &&
+        floors[i] != null &&
+        waypoint.heightM - floors[i] < STALE_HOLD_MAX_HEIGHT_M
+      );
+    };
+    // Heights on the floor as it reads now: the rendered mesh where a poll
+    // has sampled it, else the bare-earth DEM (`cachedGroundFloor`). A run of
+    // waypoints in the air with no altitude joins the line when it is next
+    // to a ground waypoint or one low over the floor (a take-off roll, the
+    // end of an approach). A run between two higher waypoints is a dropout:
+    // it stands alone on the floor, so the line never dives to the ground.
+    const layout = () => {
+      const floors = waypoints.map(({ lat, lon }) =>
+        cachedGroundFloor(lat, lon),
+      );
+      const heights = waypoints.map(({ onGround, heightM }, i) =>
+        onGround && floors[i] == null
+          ? heightM
+          : floorAltitudeM(onGround ? null : heightM, floors[i]),
+      );
+      const alone = new Array(count).fill(false);
+      for (let i = 0; i < count;) {
+        if (!waypoints[i].noHeight) {
+          i += 1;
+          continue;
+        }
+        let end = i;
+        while (end < count && waypoints[end].noHeight) end += 1;
+        if (!nearFloor(i - 1, i, floors) && !nearFloor(end, end - 1, floors))
+          alone.fill(true, i, end);
+        i = end;
+      }
+      let cold = 0;
+      for (let i = 0; i < count; i++)
+        if (floors[i] == null && waypoints[i].restsOnFloor) cold += 1;
+      return { heights, alone, cold };
+    };
+    // A height that moves less than this keeps its vertex: a re-read floor
+    // jitters by centimetres, and an unchanged vertex is not drawn again.
+    const SAME_HEIGHT_M = 0.25;
+    const sameHeight = (a, b) =>
+      a == null ? b == null : b != null && Math.abs(a - b) <= SAME_HEIGHT_M;
+    const backfillFixes = ({ heights, alone }, positions) =>
+      trailBackfillFixes(
+        waypoints.map(({ timeMs }, i) => ({
+          position: positions[i],
           timeMs,
-          nullAltitude: known == null,
-        };
-      }),
-    );
+          nullAltitude: alone[i],
+        })),
+      );
     // A history that ends in the air does not join an aircraft now on the
     // ground (or the reverse) across a landing or take-off nobody saw.
-    flightState._trailFixes = joinTrailBackfill(
-      backfill,
-      flightState._trailFixes,
-      TRAIL_MAX_POINTS,
-      {
+    const join = (backfill, live) =>
+      joinTrailBackfill(backfill, live, TRAIL_MAX_POINTS, {
         backfillEndsOnGround: parsed[parsed.length - 1].onGround,
         onGroundNow: flightState.records.data.get(icao24)?.onGround,
         nowMs: flightState.now(),
-      },
+      });
+    let shown = layout();
+    let onMesh = meshFloorPreferred();
+    let positions = shown.heights.map((height, i) =>
+      height == null
+        ? null
+        : fromDegrees(waypoints[i].lon, waypoints[i].lat, height),
     );
+    let backfill = backfillFixes(shown, positions);
+    // The history's own fixes, taken before the join: with no live fix the
+    // joined trail is the history's array, and live reports appended to it
+    // later are not history.
+    let shownFixes = new Set(backfill.fixes);
+    flightState._trailFixes = join(backfill, flightState._trailFixes);
     _refreshTrailDisplay();
+
+    // Floored again when the floor under the history changes (a DEM lookup
+    // that outlived the deadline, a cold cell a poll asked for again, or mesh
+    // readings a poll took): the history is rebuilt ahead of the live fixes
+    // and drawn once, only when a vertex moves or a run joins or breaks, and
+    // never once tracking has moved on. A vertex that did not move keeps its
+    // position, so its stretch of line is not drawn again.
+    let pollCount = 0;
+    /** @type {Map<string, number>} Cell → poll its probe kept no reading. */
+    const missedAt = new Map();
+    /** @type {Set<string>} The cells this poll offered the sampler. */
+    let offered = new Set();
+    const cellKey = (lat, lon) => {
+      const cell = coarseFloorCoord(lat, lon);
+      return `${cell.lat},${cell.lon}`;
+    };
+    /** A waypoint with its floor cell and the cell's key, worked out once. */
+    const withCell = (waypoint) => {
+      if (!waypoint.cell) {
+        waypoint.cell = coarseFloorCoord(waypoint.lat, waypoint.lon);
+        waypoint.key = `${waypoint.cell.lat},${waypoint.cell.lon}`;
+      }
+      return waypoint;
+    };
+    const refloor = (missed = [], { force = false } = {}) => {
+      if (!current()) return false;
+      for (const { lat, lon } of missed ?? []) {
+        const key = cellKey(lat, lon);
+        if (offered.has(key)) missedAt.set(key, pollCount);
+      }
+      // On a globe stack with every floor known nothing can move it.
+      if (!force && !onMesh && !meshFloorPreferred() && shown.cold === 0)
+        return false;
+      onMesh = meshFloorPreferred();
+      const next = layout();
+      const moved = next.heights.some(
+        (height, i) =>
+          !sameHeight(height, shown.heights[i]) ||
+          next.alone[i] !== shown.alone[i],
+      );
+      if (!moved) {
+        shown = { ...shown, cold: next.cold };
+        return false;
+      }
+      const kept = next.heights.map((height, i) =>
+        sameHeight(height, shown.heights[i]) ? shown.heights[i] : height,
+      );
+      positions = kept.map((height, i) =>
+        height == null
+          ? null
+          : height === shown.heights[i] && positions[i]
+            ? positions[i]
+            : fromDegrees(waypoints[i].lon, waypoints[i].lat, height),
+      );
+      shown = { ...next, heights: kept };
+      const previous = shownFixes;
+      backfill = backfillFixes(shown, positions);
+      shownFixes = new Set(backfill.fixes);
+      flightState._trailFixes = join(
+        backfill,
+        flightState._trailFixes.filter((fix) => !previous.has(fix)),
+      );
+      _refreshTrailDisplay();
+      return true;
+    };
+    // This poll's share of the floor work, newest first, one waypoint per
+    // floor cell and at most TRAIL_FLOOR_MAX_CELLS of each kind:
+    //  - `cold`: cells with no floor under a waypoint that stands on it once
+    //    known, asked of the DEM again so a failed lookup recovers;
+    //  - `mesh`: warm cells a mesh reading can lift (a waypoint on the floor,
+    //    or less than the most the mesh may stand above the DEM over it),
+    //    left out once read, with their centre beyond the sampler's reach
+    //    from the camera, or while a probe that kept nothing waits
+    //    TRAIL_FLOOR_RETRY_POLLS.
+    // A cell counts for a list once a waypoint in it is taken or the cell
+    // is settled for that list, not when a waypoint that does not need it
+    // (a later pass high over the field) comes first.
+    const floorCells = (viewerLat, viewerLon) => {
+      pollCount += 1;
+      offered = new Set();
+      const mesh = [];
+      const cold = [];
+      const preferred = meshFloorPreferred();
+      const wantCold = shown.cold > 0;
+      if (!preferred && !wantCold) return { mesh, cold };
+      const reach = Number.isFinite(viewerLat) && Number.isFinite(viewerLon);
+      const meshSeen = new Set();
+      const coldSeen = new Set();
+      for (
+        let i = count - 1;
+        i >= 0 &&
+        ((preferred && mesh.length < TRAIL_FLOOR_MAX_CELLS) ||
+          (wantCold && cold.length < TRAIL_FLOOR_MAX_CELLS));
+        i -= 1
+      ) {
+        const { lat, lon, heightM, restsOnFloor, cell, key } = withCell(
+          waypoints[i],
+        );
+        const floorM = cachedGroundFloor(lat, lon);
+        if (floorM == null) {
+          if (
+            restsOnFloor &&
+            cold.length < TRAIL_FLOOR_MAX_CELLS &&
+            !coldSeen.has(key)
+          ) {
+            coldSeen.add(key);
+            cold.push({ lat, lon });
+          }
+          continue;
+        }
+        if (!preferred || mesh.length >= TRAIL_FLOOR_MAX_CELLS) continue;
+        if (meshSeen.has(key)) continue;
+        if (
+          cachedMeshFloor(lat, lon) != null ||
+          pollCount - (missedAt.get(key) ?? -Infinity) <
+            TRAIL_FLOOR_RETRY_POLLS ||
+          (reach &&
+            approxDistanceKm(viewerLat, viewerLon, cell.lat, cell.lon) >
+              meshReachKm)
+        ) {
+          meshSeen.add(key);
+          continue;
+        }
+        if (heightM != null && !(heightM < floorM + MESH_FLOOR_ABOVE_PRIOR_M))
+          continue;
+        meshSeen.add(key);
+        mesh.push({ lat, lon });
+        offered.add(key);
+      }
+      return { mesh, cold };
+    };
+    flightState._trailFloor = { current, refloor, floorCells };
+    if (floorLookup?.late) {
+      await floorLookup.late;
+      refloor([], { force: true });
+    }
+  }
+
+  /**
+   * This poll's floor batch with the tracked history in it: `warm` for the
+   * DEM warm (the contacts' points, then the history's cold cells), `mesh`
+   * for the mesh sampler (the history's first TRAIL_FLOOR_PROBE_SHARE cells
+   * ahead of the contacts' points, so a busy airport cannot starve it, and
+   * the rest of its cells after them).
+   * @param {Array<{lat: number, lon: number}>} points - The contacts' cells.
+   * @param {number|null} viewerLat @param {number|null} viewerLon - Viewer subpoint.
+   * @returns {{warm: Array<{lat: number, lon: number}>, mesh: Array<{lat: number, lon: number}>}}
+   */
+  function _floorBatch(points, viewerLat, viewerLon) {
+    const floor = flightState._trailFloor;
+    const trail = floor?.current()
+      ? floor.floorCells(viewerLat, viewerLon)
+      : null;
+    if (!trail?.mesh.length && !trail?.cold.length)
+      return { warm: points, mesh: points };
+    return {
+      warm: trail.cold.length ? points.concat(trail.cold) : points,
+      mesh: trail.mesh.length
+        ? trail.mesh
+            .slice(0, TRAIL_FLOOR_PROBE_SHARE)
+            .concat(points, trail.mesh.slice(TRAIL_FLOOR_PROBE_SHARE))
+        : points,
+    };
+  }
+
+  /**
+   * After a poll has sampled the floor: floor the tracked history again if
+   * the floor under it changed.
+   * @param {Array<{lat: number, lon: number}>} [missed] - Points the sampler
+   *   probed and kept no reading for.
+   * @returns {boolean} Whether the history was redrawn.
+   */
+  function _refloorTrail(missed) {
+    return flightState._trailFloor?.refloor(missed) ?? false;
   }
 
   /**
@@ -674,6 +956,7 @@ export function createTracking({
 
   function _clearTrail() {
     flightState._trailBackfillToken += 1;
+    flightState._trailFloor = null;
     flightState._trailFixes = [];
     if (flightState._trail) flightState._trail.clear();
     flightState._trailHeadOff?.();
@@ -1466,6 +1749,8 @@ export function createTracking({
     _refreshTrailDisplay,
     _startTrail,
     _backfillTrail,
+    _floorBatch,
+    _refloorTrail,
     _clearTrail,
     _destroyTrail,
     /** Let the tracked billboard's set go (layer teardown). */

@@ -111,19 +111,22 @@ export function createMeshFloorSampler({
    *   through as well.
    * @param {number} [options.viewerLat] @param {number} [options.viewerLon]
    *   Viewer subpoint (computed once by the caller's poll).
+   * @returns {Array<{lat: number, lon: number}>} The points probed that kept
+   *   no reading (tiles not loaded there, or refused by the gate).
    */
   function sampleMeshFloorCells(
     viewer,
     points,
     { sets, viewerLat, viewerLon } = {},
   ) {
-    if (!meshFloorPreferred()) return;
-    if (!viewer || viewer.isDestroyed?.()) return;
+    const missed = [];
+    if (!meshFloorPreferred()) return missed;
+    if (!viewer || viewer.isDestroyed?.()) return missed;
     const heights = heightsOf(viewer);
     const exclude = Array.isArray(sets) ? sets : undefined;
     // Without depth-texture support every probe throws: nothing to latch.
-    if (!heights?.supported().surface) return;
-    if (!Array.isArray(points) || !points.length) return;
+    if (!heights?.supported().surface) return missed;
+    if (!Array.isArray(points) || !points.length) return missed;
     // Round-5 hardening (the CCTV projectionTilesReady lesson, ported late):
     // while tiles are MID-STREAM a probe returns coarse-LOD heights — real
     // numbers, wildly wrong — and the one-shot latch made them permanent.
@@ -133,10 +136,10 @@ export function createMeshFloorSampler({
     try {
       camH = findCamera(viewer)?.pose().height;
     } catch {
-      return; // mid-teardown
+      return missed; // mid-teardown
     }
-    if (!Number.isFinite(camH) || camH > MAX_CAMERA_HEIGHT_M) return;
-    if (!_surfaceSettled(viewer)) return;
+    if (!Number.isFinite(camH) || camH > MAX_CAMERA_HEIGHT_M) return missed;
+    if (!_surfaceSettled(viewer)) return missed;
     let sampled = 0;
     const attempted = new Set();
     for (const p of points) {
@@ -176,7 +179,10 @@ export function createMeshFloorSampler({
       // A miss counts against the budget whatever its cause: past the support
       // gate a probe only throws mid-teardown, when every later cell would too.
       sampled += 1;
-      if (height === null) continue; // tiles not loaded yet — no negative latch
+      if (height === null) {
+        missed.push(p); // tiles not loaded yet — no negative latch
+        continue;
+      }
       // Round 5: a REAL Re:Earth prior is REQUIRED before any sample latches.
       //  - A geoid-fallback prior (cached while the proxy was failing) is a
       //    sea-level poison that rejected legitimate samples at elevated
@@ -206,6 +212,7 @@ export function createMeshFloorSampler({
       // the project roadmap, which bundles it with the fly_route probe so
       // one post-launch pass settles rendered-mesh sampling everywhere.
       const accepted = reportValidatedMeshFloorCell(p.lat, p.lon, height);
+      if (!accepted) missed.push(p);
       // A spot counts as probed once the gate has judged it against a real
       // prior: accepted, or refused with the cell's DEM warm. A spot refused
       // only because the DEM was still cold is tried again later. Each spot is
@@ -223,6 +230,7 @@ export function createMeshFloorSampler({
       )
         probes.push({ lat: p.lat, lon: p.lon });
     }
+    return missed;
   }
 
   // re-export for callers that want one import site
@@ -237,5 +245,5 @@ export function createMeshFloorSampler({
     () => eventTarget?.removeEventListener('gev:map-stack-changed', onStack),
     { once: true },
   );
-  return { sampleMeshFloorCells, cachedGroundFloor };
+  return { MAX_SAMPLE_DIST_KM, sampleMeshFloorCells, cachedGroundFloor };
 }

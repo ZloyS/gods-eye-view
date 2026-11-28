@@ -1,5 +1,13 @@
-/** Construct an instance-owned groundFloor service with explicit dependencies. */
-export function createGroundFloor({ terrain, signal }) {
+/**
+ * Construct an instance-owned groundFloor service with explicit dependencies.
+ * `floorResolveDeadlineMs` (default 1200) is FLOOR_RESOLVE_DEADLINE_MS; tests
+ * pass a short one.
+ */
+export function createGroundFloor({
+  terrain,
+  signal,
+  floorResolveDeadlineMs = 1200,
+}) {
   const { cachedRealEllipsoidalGround, resolveEllipsoidalGround } = terrain;
   signal?.throwIfAborted();
   // src/data/groundFloor.js — coarse ground-floor clamp for entity render
@@ -593,7 +601,7 @@ export function createGroundFloor({ terrain, signal }) {
    *  the 30 s proxy timeout) — trails showed up late, short, or not at all.
    *  The resolve keeps running past the deadline and lands in the cache for
    *  the next paint/select. */
-  const FLOOR_RESOLVE_DEADLINE_MS = 1200;
+  const FLOOR_RESOLVE_DEADLINE_MS = floorResolveDeadlineMs;
 
   /**
    * Bounded-latency variant of resolveGroundFloorCells: waits at most
@@ -601,13 +609,22 @@ export function createGroundFloor({ terrain, signal }) {
    * cells that ARE warm. The underlying resolve continues in the background
    * and fills the cache for later reads. Never throws.
    * @param {Array<{lat: number, lon: number}>} points
-   * @returns {Promise<void>}
+   * @returns {Promise<{late: Promise<void>|null}>} `late` is the resolve
+   *   still running when the deadline passed, for a caller that paints again
+   *   once it lands; null when it finished in time.
    */
   function resolveGroundFloorCellsBounded(points) {
+    const resolving = resolveGroundFloorCells(points);
+    let timer;
     return Promise.race([
-      resolveGroundFloorCells(points),
-      new Promise((resolve) => setTimeout(resolve, FLOOR_RESOLVE_DEADLINE_MS)),
-    ]);
+      resolving.then(() => ({ late: null })),
+      new Promise((resolve) => {
+        timer = setTimeout(
+          () => resolve({ late: resolving }),
+          FLOOR_RESOLVE_DEADLINE_MS,
+        );
+      }),
+    ]).finally(() => clearTimeout(timer));
   }
 
   async function resolveGroundFloorCells(

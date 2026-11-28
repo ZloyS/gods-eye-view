@@ -19,13 +19,19 @@ function stub(overrides = {}) {
   });
 }
 
-function harness({ ground = () => null }) {
+function harness({
+  ground = () => null,
+  rendering = {},
+  tracking = {},
+  floor = {},
+}) {
   const appended = [];
   const history = [];
   const iconIds = new Set();
   const groundFloor = stub({
     cachedGroundFloor: ground,
     GROUND_FLOOR_LIFT_M: 0.5,
+    ...floor,
   });
   const services = stub({
     camera: stub(),
@@ -49,7 +55,7 @@ function harness({ ground = () => null }) {
   flightState._trackedIcao = ICAO;
   flightState._positionHistory.set(ICAO, history);
   const parts = {
-    rendering: stub({ _modelOwnsVisual: () => false }),
+    rendering: stub({ _modelOwnsVisual: () => false, ...rendering }),
     icons: stub({
       _iconIds: () => [...iconIds],
       _addIcon: (id) => iconIds.add(id),
@@ -77,6 +83,7 @@ function harness({ ground = () => null }) {
       _militaryLayerSuppresses: () => false,
       _appendTrailFix: (position, epochMs) =>
         appended.push({ position, epochMs }),
+      ...tracking,
     }),
     motion: parts.motion,
     icons: parts.icons,
@@ -170,4 +177,35 @@ test('with the ground unknown, a low barometric altitude alone does not hold a c
   assert.equal(h.history.length, 2);
   assert.equal(h.history[0].staleHolds, false);
   assert.equal(h.appended.length, 1);
+});
+
+test('a poll puts the tracked history in its floor batch, samples it, then re-floors it', () => {
+  const steps = [];
+  const trailPoint = { lat: 38.2, lon: -122.6 };
+  const coldPoint = { lat: 38.3, lon: -122.6 };
+  const missed = [trailPoint];
+  const h = harness({
+    floor: { warmGroundFloor: (points) => steps.push(['warm', points]) },
+    rendering: {
+      _sampleMeshFloor: (points) => {
+        steps.push(['sample', points]);
+        return missed;
+      },
+    },
+    tracking: {
+      _floorBatch: (points) => ({
+        warm: [...points, coldPoint],
+        mesh: [trailPoint, ...points],
+      }),
+      _refloorTrail: (given) => steps.push(['refloor', given]),
+    },
+  });
+  h.poll(lightAircraft(36.4, 63), Date.UTC(2026, 10, 9, 20, 0));
+  assert.deepEqual(
+    steps.map(([step]) => step),
+    ['warm', 'sample', 'refloor'],
+  );
+  assert.ok(steps[0][1].includes(coldPoint));
+  assert.equal(steps[1][1][0], trailPoint);
+  assert.equal(steps[2][1], missed);
 });

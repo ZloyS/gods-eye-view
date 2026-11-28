@@ -175,6 +175,12 @@ export function createFlightState({ source, services }) {
 
   flightState._trailFixes = [];
 
+  /** @type {{current: () => boolean, refloor: (missed?: Array<{lat: number, lon: number}>, options?: {force?: boolean}) => boolean, floorCells: (viewerLat: number|null, viewerLon: number|null) => {mesh: Array<{lat: number, lon: number}>, cold: Array<{lat: number, lon: number}>}}|null}
+   *  The tracked history's floor handle: the cells a poll adds to its floor
+   *  batch, and the re-floor it runs after (`_backfillTrail`). */
+
+  flightState._trailFloor = null;
+
   /** @type {number} Body fixes drawn: those at or before the display time. */
 
   flightState._trailBodyCount = 0;

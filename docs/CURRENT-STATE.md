@@ -2648,7 +2648,35 @@ camera, terrain floor, trail, selection and measured model-size policies remain.
 A tracked civil or military aircraft's trail (`src/data/trailContinuity.js`) lifts
 the pen, drawing nothing, between two points more than 48 minutes or over 1,500 kt
 apart (a parked aircraft within 0.1 nm keeps one line for up to three hours) and at a
-waypoint with no altitude; a ground waypoint is drawn on the ground. The head joins the
+waypoint with no altitude; a ground waypoint is drawn on the ground. In a civil
+aircraft's history backfill only a positive barometric altitude is a height (the feed
+sends 0 for a waypoint with none, the take-off roll included). A ground waypoint stands
+on the ground floor; while the floor is unknown it keeps a positive altitude of its own
+and is otherwise left out, its cell asked for again like the others. A run of
+waypoints in the air with no altitude rests on the floor too, and joins the line when
+it is next to a ground waypoint or one within 150 m of the floor, no more than 2
+minutes and 3 km from it (the take-off roll, the end of an approach); otherwise, as
+between two higher waypoints, it is a dropout and stands alone, so the line never
+dives to the ground or runs along it. While the
+floor is unknown such a waypoint is left out and the line breaks there, never drawn at
+sea level under the field. The floor is the one the live aircraft stand on: the
+rendered mesh where it has been sampled, else the bare-earth DEM. Each flights poll
+adds the history's cells to its floor batch, newest first, at most 40 of each kind:
+cold cells under ground waypoints and waypoints with no altitude go to the DEM lookup
+again, so a failed lookup recovers, and warm cells a mesh reading can lift (on the
+floor, or less than 80 m above it) go to the mesh sampler, the first 8 ahead of the
+contacts' cells so a busy airport cannot starve the history. A cell already read, with
+its centre beyond the sampler's 15 km from the camera, or whose probe kept no reading
+in the last 4 polls is skipped, so older cells of a long taxi get their turn; a later
+pass high over a cell does not hide the ground waypoint under it. The history is
+built again, ahead of
+the live reports, whenever the floor under it moves a vertex by more than 0.25 m: a
+floor lookup that outlasted its 1.2 s wait, a cold cell a poll found, or a poll's mesh
+readings. Vertices that did not move keep their positions, so their lines are not
+drawn again; nothing is redone while nothing new lands, on a globe stack with every
+floor known the poll skips the history, and it never touches a trail once another
+aircraft has been selected or the trail cleared. Only the newest 2,000 waypoints are
+looked up and kept. The head joins the
 aircraft only within 150 km. Each trail keeps up to 2,000 reports, a full day of history
 at one fix per minute plus the live session; past that the oldest go first. The renderer
 (`src/data/trailRenderer.js`) freezes every chunk of 128 points except the newest into

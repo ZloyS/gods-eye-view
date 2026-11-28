@@ -125,6 +125,22 @@ export const TRAIL_COLOR = '#00d4ff';
 
 export const TRAIL_MAX_POINTS = 2000;
 
+/** @constant {number} Most floor cells of the tracked history a poll offers
+ *  the rendered-mesh sampler, and most cold ones it asks the DEM for, newest
+ *  first: one sampler call's budget. */
+
+export const TRAIL_FLOOR_MAX_CELLS = 40;
+
+/** @constant {number} Mesh probes a poll keeps for the tracked history, ahead
+ *  of the contacts, while it has cells to offer. */
+
+export const TRAIL_FLOOR_PROBE_SHARE = 8;
+
+/** @constant {number} Polls a tracked-history cell waits after a probe that
+ *  kept no reading before it is offered again. */
+
+export const TRAIL_FLOOR_RETRY_POLLS = 4;
+
 // ---------------------------------------------------------------------------
 // Render-behind smoothing (PRD WS-C C2 — approved product decision): the fleet
 // renders at now − the display delay so positions run BETWEEN two known

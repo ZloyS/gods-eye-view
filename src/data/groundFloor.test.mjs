@@ -14,6 +14,7 @@ import {
   setMeshFloorPreferred, meshFloorPreferred, _clearMeshFloorCellsForTest,
   neighborFloorM,
 } from './groundFloor.js';
+import { createGroundFloor } from '../services/groundFloor.js';
 import {
   corridorPathLatLon, projectGroundArcLatLon,
   CORRIDOR_SAMPLE_SPACING_M, CORRIDOR_MAX_LENGTH_M,
@@ -651,4 +652,32 @@ test('neighborFloorM never counts the cell itself — it exists because that one
   setMeshFloorPreferred(true);
   reportMeshFloorCell(30.2, -97.66, 500);
   assert.equal(neighborFloorM({ lat: 30.2, lon: -97.66 }), null);
+});
+
+test('the bounded floor resolve hands back the lookup only when the deadline beat it', async () => {
+  const terrain = (lookup) => ({
+    cachedRealEllipsoidalGround: () => null,
+    resolveEllipsoidalGround: lookup,
+  });
+  const quick = createGroundFloor({ terrain: terrain(async () => {}) });
+  assert.deepEqual(await quick.resolveGroundFloorCellsBounded([{ lat: 1, lon: 1 }]), { late: null });
+
+  assert.equal(quick.FLOOR_RESOLVE_DEADLINE_MS, 1200);
+
+  let release;
+  const slow = createGroundFloor({
+    terrain: terrain(() => new Promise((resolve) => { release = resolve; })),
+    floorResolveDeadlineMs: 20,
+  });
+  assert.equal(slow.FLOOR_RESOLVE_DEADLINE_MS, 20);
+  const started = Date.now();
+  const { late } = await slow.resolveGroundFloorCellsBounded([{ lat: 1, lon: 1 }]);
+  assert.ok(Date.now() - started >= 15);
+  let landed = false;
+  late.then(() => { landed = true; });
+  await new Promise((resolve) => setTimeout(resolve, 0));
+  assert.equal(landed, false, 'still waiting on the lookup');
+  release();
+  await late;
+  assert.equal(landed, true);
 });

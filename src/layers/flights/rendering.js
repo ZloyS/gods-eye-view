@@ -108,13 +108,19 @@ export function createRendering({
    * Sample the rendered mesh under the collected floor cells (see
    * meshFloorSampler.js), leaving this layer's own icon and model sets out
    * of the probe so it cannot land on an aircraft instead of the pavement.
+   * @returns {Array<{lat: number, lon: number}>|undefined} The points probed
+   *   that kept no reading.
    */
   function _sampleMeshFloor(points, viewerLat, viewerLon) {
-    services.meshFloor.sampleMeshFloorCells(flightState._viewer, points, {
-      sets: models._groundSampleExclusions().sets,
-      viewerLat,
-      viewerLon,
-    });
+    return services.meshFloor.sampleMeshFloorCells(
+      flightState._viewer,
+      points,
+      {
+        sets: models._groundSampleExclusions().sets,
+        viewerLat,
+        viewerLon,
+      },
+    );
   }
 
   return {
