@@ -41,6 +41,8 @@ export function vesselGround(surface) {
  * `placement`: a host-supplied placement for its live vessels, or null.
  * `surface`: the application's surface services; with them, vessels on lakes
  * and rivers are drawn at the water's own level (without, on the geoid).
+ * `seaSurface`: a moving sea surface the vessels' models float on, or null
+ * (`seaSurface` in ../../data/fleetModelInstances.js).
  */
 export function createApplicationVessels({
   source,
@@ -49,6 +51,7 @@ export function createApplicationVessels({
   displayParams = null,
   resolveAsset,
   surface = null,
+  seaSurface = null,
 }) {
   const ground = vesselGround(surface);
   return createVesselLayer({
@@ -71,6 +74,7 @@ export function createApplicationVessels({
       fleet: fleetModelServices({
         display: displayParams,
         ...(resolveAsset ? { resolveAsset } : {}),
+        seaSurface,
       }),
     },
   });
