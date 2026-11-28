@@ -80,3 +80,33 @@ test('the point response sends each admitted aircraft type alongside the vectors
   });
   assert.equal(Object.hasOwn(untyped, 'typeByIcao'), false);
 });
+
+test('the point response names the ground transmitters its category cannot carry', () => {
+  const transmitter = {
+    lat: 48.35,
+    lon: 11.78,
+    alt_baro: 'ground',
+    category: 'C0',
+    type: 'adsb_icao_nt',
+    flight: 'TXLU03  ',
+  };
+  const response = normalizeAdsbLolPointResponse({
+    now: 1000,
+    ac: [
+      { hex: '342351', ...transmitter },
+      // The same emitter airborne, another category or a transponder: no.
+      { hex: '3c41c2', ...transmitter, alt_baro: 1200 },
+      { hex: '3c41c3', ...transmitter, category: 'C2' },
+      { hex: '3c41c4', ...transmitter, type: 'adsb_icao' },
+    ],
+  });
+  assert.equal(response.states.length, 4);
+  assert.deepEqual(response.transmitterByIcao, ['342351']);
+  // The state vector's category has no C0: it reads as no information.
+  assert.equal(response.states[0][17], 0);
+  const none = normalizeAdsbLolPointResponse({
+    now: 1000,
+    ac: [{ hex: 'D4E5F6', lat: 30, lon: -98 }],
+  });
+  assert.equal(Object.hasOwn(none, 'transmitterByIcao'), false);
+});

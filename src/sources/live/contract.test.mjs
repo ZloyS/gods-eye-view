@@ -655,3 +655,44 @@ test('a type sent alongside the state vectors becomes the record type code', () 
     null,
   );
 });
+
+test('a feed ground transmitter reaches the observation in both shapes', () => {
+  const vector = (id) => [
+    id,
+    'TXLU03',
+    null,
+    now / 1000,
+    now / 1000,
+    11.78,
+    48.35,
+    null,
+    true,
+  ];
+  const snapshot = openSkySnapshot(
+    {
+      time: now / 1000,
+      states: [vector('342351'), vector('3c41c2')],
+      transmitterByIcao: ['342351'],
+    },
+    { now },
+  );
+  const byId = new Map(snapshot.records.map((row) => [row.id, row]));
+  assert.equal(byId.get('342351').transmitter, true);
+  assert.equal(Object.hasOwn(byId.get('3c41c2'), 'transmitter'), false);
+  const row = {
+    hex: '342351',
+    lat: 48.35,
+    lon: 11.78,
+    alt_baro: 'ground',
+    category: 'C0',
+    type: 'adsb_icao_nt',
+  };
+  assert.equal(normalizeReadsbAircraft(row, now).transmitter, true);
+  assert.equal(
+    Object.hasOwn(
+      normalizeReadsbAircraft({ ...row, type: 'adsb_icao' }, now),
+      'transmitter',
+    ),
+    false,
+  );
+});

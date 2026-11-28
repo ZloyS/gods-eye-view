@@ -7,20 +7,20 @@ import {
   finite,
 } from './contract.js';
 import {
+  isReadsbGroundTransmitter,
   openSkyAircraftId,
   positionedOpenSkyAircraftId,
   readAdsbVerticalRateFpm,
 } from '../adsbFields.js';
 
-/** The aircraft (lowercase ICAO) a state-vector snapshot's `estimatedByIcao` names. */
-const estimatedCache = new WeakMap();
-function estimatedIds(payload) {
-  const list = payload?.estimatedByIcao;
+/** The aircraft (lowercase ICAO) a state-vector snapshot's id list names. */
+const idListCache = new WeakMap();
+function listedIds(list) {
   if (!Array.isArray(list)) return EMPTY_IDS;
-  let ids = estimatedCache.get(list);
+  let ids = idListCache.get(list);
   if (!ids) {
     ids = new Set(list.map((id) => cleanText(id).toLowerCase()));
-    estimatedCache.set(list, ids);
+    idListCache.set(list, ids);
   }
   return ids;
 }
@@ -95,6 +95,8 @@ export function normalizeReadsbAircraft(row, snapshotTimeMs) {
     operator: cleanText(row.ownOp),
     squawk: normalizeSquawk(row.squawk),
     emergency: cleanText(row.emergency).toLowerCase() || null,
+    // A ground transmitter (`isReadsbGroundTransmitter`) says so.
+    ...(isReadsbGroundTransmitter(row) && { transmitter: true }),
   };
 }
 
@@ -131,8 +133,11 @@ export function openSkySnapshot(
         record.typeCode = cleanText(types[record.id]).toUpperCase() || null;
       // Nor a position source; a feed that estimates some positions (carried
       // on the last course out of receiver range) names those aircraft.
-      if (record && estimatedIds(payload).has(record.id))
+      if (record && listedIds(payload?.estimatedByIcao).has(record.id))
         record.estimated = true;
+      // Nor what emits it; a feed names the ground transmitters it hears.
+      if (record && listedIds(payload?.transmitterByIcao).has(record.id))
+        record.transmitter = true;
       return record;
     },
     'OpenSky',

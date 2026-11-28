@@ -436,6 +436,15 @@ const OPTION_GROUPS = Object.freeze({
     }),
     trackingIdOption('selectedFlightsTrackingId', 't', null),
     trackingIdOption('selectedMilitaryTrackingId', 'u', null),
+    // Flights category toggles (layers/flights/categories.js), all shown by
+    // default.
+    booleanOption('airliners', 'a', true),
+    booleanOption('regional', 'r', true),
+    booleanOption('bizjets', 'b', true),
+    booleanOption('light', 'l', true),
+    booleanOption('helicopters', 'h', true),
+    booleanOption('ground', 'g', true),
+    booleanOption('other', 'o', true),
   ]),
   satellites: Object.freeze([
     enumOption('catalog', 'c', 'core', ['core', 'dense'], {

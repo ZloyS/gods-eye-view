@@ -77,6 +77,9 @@ export function createIngestion({
     const updateSignal = signal
       ? AbortSignal.any([signal, resourceController.signal])
       : resourceController.signal;
+    const seq = timed ? 0 : ++feed._acquireSeq;
+    // A live poll that a later-started one has already applied over is dropped.
+    const superseded = () => !timed && !handover && seq < feed._appliedSeq;
     try {
       updateSignal.throwIfAborted();
       const query = timed ? { ...getQuery(viewer), atMs } : getQuery(viewer);
@@ -86,6 +89,7 @@ export function createIngestion({
       updateSignal.throwIfAborted();
       // The clock left the live edge while this poll was out.
       if (!timed && followsClock()) return;
+      if (superseded()) return;
       feed._lastStatus = snapshot.status ?? 200;
       const sourceEpochMs = snapshot.observedAtMs;
       const sourceAgeMs = snapshot.ageMs;
@@ -106,6 +110,7 @@ export function createIngestion({
         : handover
           ? applySnapshot(snapshot, viewer, { handover: true })
           : applySnapshot(snapshot, viewer);
+      if (!timed) feed._appliedSeq = Math.max(feed._appliedSeq, seq);
       feed._count = accepted.count;
       // Freshness belongs to the source snapshot, not the moment this browser
       // received a cached 200 response.
@@ -125,6 +130,8 @@ export function createIngestion({
       if (updateSignal.aborted || e?.name === 'AbortError') {
         throw new DOMException('Flights update aborted', 'AbortError');
       }
+      // An older poll's failure does not mark the fresher data as failed.
+      if (superseded()) return;
       console.warn('[Data:Flights] Fetch error:', e);
       feed._backoff = true;
       // A snapshot at a time is asked again by the clock's follower.
@@ -163,6 +170,9 @@ export function createFlightFeed(source) {
   feed._lastSource = source?.label || 'Aircraft';
   feed._lastCoverage = 'worldwide upstream snapshot';
   feed._trackingRefreshEpoch = 0;
+  // Live polls in the order they started, and the latest one applied.
+  feed._acquireSeq = 0;
+  feed._appliedSeq = 0;
   feed._lastTrackingRefreshOutcome = {
     epoch: 0,
     status: 'unavailable',

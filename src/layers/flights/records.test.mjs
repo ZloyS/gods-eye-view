@@ -586,3 +586,189 @@ test('a low contact near the view carries the ground under it; others carry none
   ).meta;
   assert.equal(away.groundM, null);
 });
+
+test('TWR, GND and ground transmitters are fixed ground stations', () => {
+  const store = records(() => fleetSet);
+  const flying = { onGround: false, baroAltitudeM: 300, speedMps: 0 };
+  // A feed's TWR or GND type, as its GRND: on the ground, whatever its height.
+  for (const typeCode of ['TWR', 'GND']) {
+    const meta = store.receive(
+      observation({ id: typeCode, typeCode, callsign: 'RX1', ...flying }),
+      view(),
+    ).meta;
+    assert.equal(meta.klass, 'station', typeCode);
+    assert.equal(meta.onGround, true, typeCode);
+    assert.equal(meta.altitude, 0, typeCode);
+  }
+  // A TXLU callsign, with no type or a feed's ZVEH.
+  for (const typeCode of [null, 'ZVEH']) {
+    const meta = store.receive(
+      observation({
+        id: `tx${typeCode}`,
+        typeCode,
+        callsign: 'TXLU04',
+        ...flying,
+      }),
+      view(),
+    ).meta;
+    assert.equal(meta.klass, 'station', String(typeCode));
+    assert.equal(meta.transmitter, true);
+    assert.equal(meta.onGround, true);
+  }
+  // A feed's ground transmitter (readsb C0 adsb_icao_nt on the ground).
+  const c0 = store.receive(
+    observation({ id: 'c0', callsign: '', transmitter: true, onGround: true }),
+    view(),
+  ).meta;
+  assert.equal(c0.klass, 'station');
+  // ADSTEST on the ground is a test transmitter; a flying TEST1 is not.
+  const test = store.receive(
+    observation({ id: 'ad', callsign: 'ADSTEST', onGround: true }),
+    view(),
+  ).meta;
+  assert.equal(test.klass, 'testtransmitter');
+  const flight = store.receive(
+    observation({ id: 'fl', callsign: 'TEST1', typeCode: 'A320' }),
+    view(),
+  ).meta;
+  assert.equal(flight.klass, 'airliner');
+  assert.equal(flight.transmitter, false);
+});
+
+test('a test callsign is not held as a transmitter once the callsign changes', () => {
+  const store = records(() => fleetSet);
+  const hide = (id) => {
+    const facts = store.airframeOf(id);
+    store.forget(id);
+    store.keepAirframe(id, facts);
+  };
+  const parked = {
+    id: 'b73801',
+    typeCode: 'B738',
+    onGround: true,
+    speedMps: 0,
+    baroAltitudeM: null,
+  };
+  const tested = store.receive(
+    observation({ ...parked, callsign: 'TEST1' }),
+    view(),
+  ).meta;
+  assert.equal(tested.klass, 'testtransmitter');
+  const renamed = store.receive(
+    observation({ ...parked, callsign: 'DAL123' }),
+    view(),
+  ).meta;
+  assert.equal(renamed.klass, 'airliner');
+  assert.equal(renamed.transmitter, false);
+  // The same while its category is hidden.
+  const hidden = { ...parked, id: 'b73802' };
+  store.receive(observation({ ...hidden, callsign: 'TEST1' }), view());
+  hide('b73802');
+  assert.equal(
+    store.receive(observation({ ...hidden, callsign: 'DAL124' }), view()).meta
+      .klass,
+    'airliner',
+  );
+  // The feed's own flag still holds, drawn or hidden, while still.
+  const c0 = {
+    id: 'c00001',
+    callsign: '',
+    onGround: true,
+    speedMps: 0,
+    baroAltitudeM: null,
+  };
+  store.receive(observation({ ...c0, transmitter: true }), view());
+  const held = store.receive(observation(c0), view()).meta;
+  assert.equal(held.klass, 'station');
+  assert.equal(held.transmitter, true);
+  hide('c00001');
+  assert.equal(store.receive(observation(c0), view()).meta.klass, 'station');
+  const moving = store.receive(
+    observation({ ...c0, speedMps: 8 }),
+    view(),
+  ).meta;
+  assert.equal(moving.transmitter, false);
+});
+
+test('a ground transmitter outranks a looked-up ZVEH type', () => {
+  const store = records(() => fleetSet);
+  const first = store.receive(
+    observation({ callsign: 'TXLU11', onGround: true }),
+    view(),
+  ).meta;
+  // The lookup answers ZVEH, as enrichment writes it.
+  first.typeCode = 'ZVEH';
+  first.typeLookedUp = true;
+  const next = store.receive(
+    observation({
+      callsign: 'TXLU11',
+      onGround: true,
+      positionTimeMs: 1700000005000,
+    }),
+    view(),
+  ).meta;
+  assert.equal(next.typeCode, 'ZVEH');
+  assert.equal(next.typeLookedUp, true);
+  assert.equal(next.klass, 'station');
+  // An airport vehicle with no transmitter callsign stays a vehicle.
+  const car = store.receive(
+    observation({
+      id: 'car1',
+      typeCode: 'ZVEH',
+      callsign: 'FIRE2',
+      onGround: true,
+      speedMps: 5,
+    }),
+    view(),
+  ).meta;
+  assert.equal(car.klass, 'vehicle');
+});
+
+test('a kept airframe classes the same when its contact comes back', () => {
+  const store = records();
+  const meta = store.receive(observation({ typeCode: null }), view()).meta;
+  assert.equal(meta.klass, 'unknown');
+  meta.typeCode = 'C172';
+  meta.typeLookedUp = true;
+  const facts = store.airframeOf('abc123');
+  store.forget('abc123');
+  store.keepAirframe('abc123', facts);
+  assert.equal(store.data.has('abc123'), false);
+  const back = store.receive(observation({ typeCode: null }), view()).meta;
+  assert.equal(back.typeCode, 'C172');
+  assert.equal(back.klass, 'light');
+  // Nothing to keep for a contact the records do not hold.
+  assert.equal(store.airframeOf('ffffff'), null);
+  store.keepAirframe('ffffff', null);
+  assert.equal(store.airframes.has('ffffff'), false);
+});
+
+test('a hidden contact keeps its callsign and category through a dropout, but not across a reset', () => {
+  const store = records();
+  const hide = (id) => {
+    const facts = store.airframeOf(id);
+    store.forget(id);
+    store.keepAirframe(id, facts);
+  };
+  const row = { id: 'e20001', callsign: 'HELI1', category: 8 };
+  store.receive(observation(row), view());
+  hide('e20001');
+  // A report while hidden that omits both keeps the class.
+  const dropout = store.receive(
+    observation({ id: 'e20001', callsign: '', category: null }),
+    view(),
+  ).meta;
+  assert.equal(dropout.callsign, 'HELI1');
+  assert.equal(dropout.category, 8);
+  assert.equal(dropout.klass, 'helicopter');
+  hide('e20001');
+  // A time jump carries what the airframe is, not its callsign or category.
+  store.reset();
+  const after = store.receive(
+    observation({ id: 'e20001', callsign: '', category: null }),
+    view(),
+  ).meta;
+  assert.equal(after.callsign, '');
+  assert.equal(after.category, null);
+  assert.equal(after.klass, 'unknown');
+});

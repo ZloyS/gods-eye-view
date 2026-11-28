@@ -19,7 +19,7 @@ import PreviewHud from './PreviewHud.vue';
 //   hold  2.3-5.2 s a thin timer under the value fills;
 //   exit  5.2-6.2 s the text fades; a short gap, then the next one.
 const props = defineProps({
-  /** `{typeCode, category, callsign}`: what picks the aircraft's fleet model. */
+  /** `{typeCode, category, callsign, transmitter}`: what picks the aircraft's fleet model. */
   aircraft: { type: Object, default: null },
   /** The aircraft's heading, so the turntable starts facing its way. */
   heading: { type: Number, default: 0 },
@@ -96,7 +96,7 @@ onMounted(() => {
 watch(
   () => {
     const a = props.aircraft;
-    return `${a?.typeCode ?? ''}|${a?.category ?? ''}|${a?.callsign ?? ''}`;
+    return `${a?.typeCode ?? ''}|${a?.category ?? ''}|${a?.callsign ?? ''}|${a?.transmitter === true}`;
   },
   show,
 );

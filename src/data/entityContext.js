@@ -1394,9 +1394,13 @@ export function describeEntity(
     aircraftModel:
       kind.kind === 'aircraft' && record
         ? {
-            typeCode: text(record.typeCode ?? record.type) || null,
+            typeCode:
+              text(record.stationType) ||
+              text(record.typeCode ?? record.type) ||
+              null,
             category: record.category ?? null,
             callsign: text(record.callsign) || null,
+            transmitter: record.transmitter === true,
           }
         : null,
     photo: cardPhoto(dataManager, layerId, record),
@@ -1827,6 +1831,7 @@ function tallyBy(records, labelOf, { keep = 4 } = {}) {
 
 const AIRCRAFT_CLASS_NAMES = {
   airliner: msg('Airliners'),
+  regionaljet: msg('Airliners'),
   widebody: msg('Widebodies'),
   bizjet: msg('Business jets'),
   light: msg('Light aircraft'),
@@ -1836,6 +1841,9 @@ const AIRCRAFT_CLASS_NAMES = {
   quadjet: msg('Four-engine jets'),
   vehicle: msg('Airport vehicles'),
   station: msg('Ground stations / obstacles'),
+  testtransmitter: msg('Ground stations / obstacles'),
+  // A type the classifier does not know joins the tail.
+  unknown: msg('Other'),
 };
 
 /**

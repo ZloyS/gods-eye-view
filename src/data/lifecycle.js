@@ -504,6 +504,9 @@ export class LayerLifecycle {
    * Refresh one enabled tracked layer at the destination, then let that layer
    * decide whether the requested ID was present in an authoritative snapshot.
    * Lifecycle success alone is deliberately insufficient for this decision.
+   * A layer may hold the target drawable through that refresh
+   * (`prepareTrackingRestoreTarget`), without following it; it lets go once
+   * the module has resolved it.
    */
   async resolveLayerTrackingTarget(
     layerId,
@@ -535,37 +538,9 @@ export class LayerLifecycle {
       };
     }
 
-    const refreshSucceeded = await this.refreshLayer(layerId, { signal });
-    if (signal?.aborted) {
-      return {
-        ...base,
-        refreshSucceeded,
-        status: 'cancelled',
-        reason: String(signal.reason || 'aborted'),
-      };
-    }
-    if (
-      this.layers.get(layerId) !== entry ||
-      entry.destroying ||
-      !entry.enabled
-    ) {
-      return {
-        ...base,
-        refreshSucceeded,
-        status: 'destroyed',
-        reason: 'layer-destroyed',
-      };
-    }
-
+    entry.module.prepareTrackingRestoreTarget?.(targetId);
     try {
-      const resolution = await entry.module.resolveTrackingRestoreTarget(
-        targetId,
-        {
-          signal,
-          origin,
-          refreshSucceeded,
-        },
-      );
+      const refreshSucceeded = await this.refreshLayer(layerId, { signal });
       if (signal?.aborted) {
         return {
           ...base,
@@ -574,34 +549,67 @@ export class LayerLifecycle {
           reason: String(signal.reason || 'aborted'),
         };
       }
-      const status = [
-        'found',
-        'missing',
-        'source-unavailable',
-        'cancelled',
-        'superseded',
-        'destroyed',
-      ].includes(resolution?.status)
-        ? resolution.status
-        : 'source-unavailable';
-      return { ...base, refreshSucceeded, ...resolution, status };
-    } catch (error) {
-      if (signal?.aborted || isAbortError(error)) {
+      if (
+        this.layers.get(layerId) !== entry ||
+        entry.destroying ||
+        !entry.enabled
+      ) {
         return {
           ...base,
           refreshSucceeded,
-          status: 'cancelled',
-          reason: String(signal?.reason || error?.message || 'aborted'),
-          errorClass: 'AbortError',
+          status: 'destroyed',
+          reason: 'layer-destroyed',
         };
       }
-      return {
-        ...base,
-        refreshSucceeded,
-        status: 'source-unavailable',
-        reason: String(error?.message || error),
-        errorClass: error?.name || 'Error',
-      };
+
+      try {
+        const resolution = await entry.module.resolveTrackingRestoreTarget(
+          targetId,
+          {
+            signal,
+            origin,
+            refreshSucceeded,
+          },
+        );
+        if (signal?.aborted) {
+          return {
+            ...base,
+            refreshSucceeded,
+            status: 'cancelled',
+            reason: String(signal.reason || 'aborted'),
+          };
+        }
+        const status = [
+          'found',
+          'missing',
+          'source-unavailable',
+          'cancelled',
+          'superseded',
+          'destroyed',
+        ].includes(resolution?.status)
+          ? resolution.status
+          : 'source-unavailable';
+        return { ...base, refreshSucceeded, ...resolution, status };
+      } catch (error) {
+        if (signal?.aborted || isAbortError(error)) {
+          return {
+            ...base,
+            refreshSucceeded,
+            status: 'cancelled',
+            reason: String(signal?.reason || error?.message || 'aborted'),
+            errorClass: 'AbortError',
+          };
+        }
+        return {
+          ...base,
+          refreshSucceeded,
+          status: 'source-unavailable',
+          reason: String(error?.message || error),
+          errorClass: error?.name || 'Error',
+        };
+      }
+    } finally {
+      entry.module.releaseTrackingRestoreTarget?.(targetId);
     }
   }
 

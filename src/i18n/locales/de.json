@@ -4540,5 +4540,15 @@
   "Reference monitor": "Referenzmessgerät",
   "Needs {envVars} — add one in Provider Settings": "Benötigt {envVars}: einen davon in den Anbieter-Einstellungen hinzufügen",
   "CABLE \u00b7 {name}": "KABEL · {name}",
-  "LANDING POINT \u00b7 {name}": "ANLANDEPUNKT · {name}"
+  "LANDING POINT \u00b7 {name}": "ANLANDEPUNKT · {name}",
+  "Balloon": "Ballon",
+  "Aircraft": "Luftfahrzeug",
+  "Test transmitter": "Testsender",
+  "aircraft category|Airliners": "Verkehrsflugzeuge",
+  "aircraft category|Regional": "Regional",
+  "aircraft category|Business": "Businessjets",
+  "aircraft category|Light": "Leichtflugzeuge",
+  "aircraft category|Helicopters": "Hubschrauber",
+  "aircraft category|Ground": "Am Boden",
+  "aircraft category|Other": "Sonstige"
 }

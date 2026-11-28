@@ -4435,5 +4435,15 @@
   "Reference monitor": "基準測定器",
   "Needs {envVars} — add one in Provider Settings": "{envVars}のいずれかが必要です。プロバイダー設定で追加してください",
   "CABLE \u00b7 {name}": "ケーブル · {name}",
-  "LANDING POINT \u00b7 {name}": "陸揚げ地点 · {name}"
+  "LANDING POINT \u00b7 {name}": "陸揚げ地点 · {name}",
+  "Balloon": "気球",
+  "Aircraft": "航空機",
+  "Test transmitter": "試験用送信機",
+  "aircraft category|Airliners": "旅客機",
+  "aircraft category|Regional": "リージョナル",
+  "aircraft category|Business": "ビジネスジェット",
+  "aircraft category|Light": "軽飛行機",
+  "aircraft category|Helicopters": "ヘリコプター",
+  "aircraft category|Ground": "地上",
+  "aircraft category|Other": "その他"
 }

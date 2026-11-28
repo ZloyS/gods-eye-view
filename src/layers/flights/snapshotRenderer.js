@@ -9,6 +9,7 @@ import { POSITION_HISTORY_LIMIT } from './recordPolicy.js';
 import { followsClock } from './policy.js';
 import { newestReport, pushReport } from '../../data/aircraftMotionRegime.js';
 import { observeLiveAircraft } from './placed.js';
+import { aircraftCategory } from '../../data/aircraftClass.js';
 import {
   historyAfterTrail,
   mergeAircraftTimelineFixes,
@@ -50,6 +51,7 @@ export function createFlightSnapshotRenderer({
   icons,
   enrichment,
   queries,
+  categories = null,
 }) {
   const { refreshMilitaryRegistryIfStale, isMilitaryIcao } = militaryRegistry;
   const { warmGroundFloor, cachedGroundFloor } = groundFloor;
@@ -86,6 +88,9 @@ export function createFlightSnapshotRenderer({
 
     // Classification and display policy consume source-independent observations.
     refreshMilitaryRegistryIfStale();
+    // Contacts per category, drawn or not, for the layer row.
+    const categoryCounts = new Map();
+    categories?.beginSnapshot();
     for (const observation of snapshot.records) {
       const icao24 = observation.id;
       acceptedSnapshotIcaos.add(icao24);
@@ -111,6 +116,16 @@ export function createFlightSnapshotRenderer({
           floorWarmPoints,
         },
       );
+      const category = categories
+        ? categories.categoryOf(icao24, meta)
+        : aircraftCategory(meta.klass);
+      categoryCounts.set(category, (categoryCounts.get(category) || 0) + 1);
+      // A hidden category's contact is not drawn: it goes, icon and model.
+      if (categories && !categories.drawn(icao24, meta)) {
+        currentIcaos.delete(icao24);
+        categories.hideContact(icao24);
+        continue;
+      }
       const position = motion._fixPosition(
         meta.rawLon,
         meta.rawLat,
@@ -406,6 +421,7 @@ export function createFlightSnapshotRenderer({
     // Grounded contacts are static, so lifting the stored fix + billboard
     // in place is safe (the DR extrapolates a zero-velocity fix).
     motion._refloorStaleGroundedContacts(currentIcaos);
+    categories?.setCounts(categoryCounts);
 
     return { count: flightState._icons.count, ids: acceptedSnapshotIcaos };
   };

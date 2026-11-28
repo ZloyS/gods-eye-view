@@ -4960,5 +4960,15 @@
   "Reference monitor": "جهاز رصد مرجعي",
   "Needs {envVars} — add one in Provider Settings": "يحتاج إلى {envVars} — أضف أحدها في إعدادات المزوّدين",
   "CABLE \u00b7 {name}": "كابل · {name}",
-  "LANDING POINT \u00b7 {name}": "نقطة إنزال · {name}"
+  "LANDING POINT \u00b7 {name}": "نقطة إنزال · {name}",
+  "Balloon": "منطاد",
+  "Aircraft": "طائرة",
+  "Test transmitter": "جهاز إرسال تجريبي",
+  "aircraft category|Airliners": "طائرات ركاب",
+  "aircraft category|Regional": "إقليمية",
+  "aircraft category|Business": "طائرات أعمال",
+  "aircraft category|Light": "خفيفة",
+  "aircraft category|Helicopters": "مروحيات",
+  "aircraft category|Ground": "أرضية",
+  "aircraft category|Other": "أخرى"
 }

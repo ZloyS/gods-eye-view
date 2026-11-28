@@ -245,7 +245,8 @@ export function createQueries({
    * @returns {{id: string, icao24: string, callsign: string|null, lat: number|null,
    *   lon: number|null, altitudeM: number|null, speedMps: number|null,
    *   heading: number|null, verticalRateMps: number|null, onGround: boolean,
-   *   military: boolean, aircraftClass: string|null, originCountry: string|null,
+   *   military: boolean, aircraftClass: string|null, transmitter: boolean,
+   *   stationType: string|null, originCountry: string|null,
    *   operator: string|null, squawk: string|null, emergency: boolean,
    *   emergencyKind: string|null, emergencySource: 'squawk'|'ads-b'|null,
    *   emergencyBroadcast: string|null, lastContactAtMs: number|null, routeOrigin: string|null,
@@ -297,6 +298,9 @@ export function createQueries({
       // What picks its fleet model, for the context card's turning model.
       typeCode: text(info?.typeCode),
       category: info?.category ?? null,
+      // What draws it as a fixed station whatever its type, for the card's model.
+      transmitter: info?.transmitter === true,
+      stationType: text(info?.stationType),
       originCountry: text(info?.originCountry),
       operator: text(info?.airline),
       squawk: text(info?.squawk),
@@ -356,6 +360,8 @@ export function createQueries({
      * The TRACKED contact follows the same rule (`_trackedModelRegimeActive`), so selecting
      * a contact never turns its icon into a model or its model into an icon.
      * `models3dMode` is 'proximity' (cap MODEL_MAX) or 'all' (cap MODEL_MAX_ALL); both use the 3 km radius.
+     * `airliners`, `regional`, `bizjets`, `light`, `helicopters`, `ground` and `other`
+     * show or hide a category (categories.js).
      * @param {{models3d?: boolean, models3dMode?: 'proximity'|'all', selectedFlightsTrackingId?: string|null}} params
      */
     setParams(params = {}, { origin = 'programmatic' } = {}) {
@@ -400,10 +406,12 @@ export function createQueries({
         // own conversions, so this never touches the ordinary fleet.
         parts.tracking._refreshTr3bForStyle();
       }
+      parts.categories.setCategories(params);
       if (Object.hasOwn(params, 'selectedFlightsTrackingId')) {
         const requested = _normalizeTrackedIcao(
           params.selectedFlightsTrackingId,
         );
+        const previousPending = flightState._pendingTrackingRestore?.id ?? null;
         if (requested === flightState._trackedIcao) {
           flightState._pendingTrackingRestore = null;
         } else if (requested === null) {
@@ -421,6 +429,13 @@ export function createQueries({
             parts.tracking._clearTracking(false, { origin });
           parts.tracking._applyPendingTrackingRestore();
         }
+        // A target it no longer waits for may be in a hidden category.
+        if (
+          previousPending &&
+          previousPending !== flightState._pendingTrackingRestore?.id &&
+          previousPending !== flightState._trackedIcao
+        )
+          parts.categories.refilter(previousPending);
       }
       return true;
     },
@@ -431,7 +446,13 @@ export function createQueries({
         models3dMode: flightState._models3dMode,
         irBoost: flightState._irBoost,
         selectedFlightsTrackingId: flightState._trackedIcao,
+        ...flightState._categories,
       };
+    },
+
+    /** The row's category chips (categories.js). */
+    getRowControls() {
+      return parts.categories.rowControls();
     },
 
     /**
@@ -888,6 +909,23 @@ export function createQueries({
       }
       parts.tracking._trackFlight(id, { origin });
       return true;
+    },
+
+    /** Hold a share link's target drawable through the refresh that looks for it. */
+    prepareTrackingRestoreTarget(icao24) {
+      const id = _normalizeTrackedIcao(icao24);
+      const previous = flightState._restoreCandidate;
+      flightState._restoreCandidate = id;
+      // The target it replaces goes now when its category is hidden.
+      if (previous && previous !== id) parts.categories.refilter(previous);
+    },
+
+    /** Let go of a held share target; it goes when its category is hidden. */
+    releaseTrackingRestoreTarget(icao24) {
+      const id = _normalizeTrackedIcao(icao24);
+      if (!id || flightState._restoreCandidate !== id) return;
+      flightState._restoreCandidate = null;
+      parts.categories.refilter(id);
     },
 
     /** Resolve a shared Follow target only against the latest accepted refresh. */

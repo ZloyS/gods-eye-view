@@ -7,6 +7,7 @@ import {
   recoveryMs,
 } from './motionModel.js';
 import { straightSegment } from './fixCurve.js';
+import { isStationClass } from './aircraftClass.js';
 import {
   norm180,
   distance,
@@ -1188,7 +1189,7 @@ export function createAircraftIcons({
     const heliFrame = _rotorFrameOf(icao24, info, Date.now());
     // A ground station's mast stands upright; every other glyph turns
     // along its course.
-    const station = info?.klass === 'station';
+    const station = isStationClass(info?.klass);
     const cockpitDot =
       state._cockpitContactMode &&
       !tracked &&

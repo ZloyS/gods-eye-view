@@ -1133,6 +1133,7 @@ test('a card shows the photo its layer looked up: the tracked airliner, the sele
     typeCode: 'B739',
     category: 'A3',
     callsign: 'DAL1',
+    transmitter: false,
   });
   // Photos are looked up for the tracked plane only.
   assert.equal(

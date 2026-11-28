@@ -4,7 +4,10 @@ import {
   geoidSurfaceLastResortM,
   pickRenderAltitudeM,
 } from '../../data/renderAltitude.js';
-import { classifyAircraft } from '../../data/aircraftClass.js';
+import {
+  classifyAircraft,
+  isGroundTransmitter,
+} from '../../data/aircraftClass.js';
 import { aircraftEmergency } from '../../data/aircraftEmergency.js';
 import {
   aircraftCallsignRule,
@@ -110,6 +113,7 @@ export class FlightRecords {
     // The airframe's facts: this record's, or those kept across a reset.
     const airframe = prevMeta ?? this.airframes.get(icao24);
     this.airframes.delete(icao24);
+    const nextCallsign = stickyText(callsign, airframe?.callsign);
     // The feed's own ICAO type classes the contact and picks its model from
     // the first fix; a looked-up type outranks it once one has answered.
     // A ground vehicle or ground station (a feed's ZVEH or GRND) is known
@@ -117,12 +121,7 @@ export class FlightRecords {
     // altitude at all, a contact drawn with a model built standing is on the
     // ground, where it is, instead of at the airborne default.
     const groundModel = (typeCode) =>
-      drawnAsGroundModel(
-        this.fleetModels(),
-        typeCode,
-        category,
-        stickyText(callsign, prevMeta?.callsign),
-      );
+      drawnAsGroundModel(this.fleetModels(), typeCode, category, nextCallsign);
     const feedType = cleanType(observation.typeCode);
     // A surface category keeps only a feed's ground type: a C1 contact whose
     // feed names an airliner type stays a vehicle.
@@ -138,15 +137,40 @@ export class FlightRecords {
       Boolean(feedType) &&
       (feedType !== 'ZVEH' || driving) &&
       (!groundCategory(category) || GROUND_FEED_TYPES.has(feedType));
-    // A ground station is fixed: it stands on the ground whatever height its
-    // reports carry, as if they carried none.
-    const station = keepFeedType && feedType === 'GRND';
-    const baro_alt = station ? null : reportedBaroAlt;
-    const geo_alt = station ? null : reportedGeoAlt;
     const typeLookedUp = airframe?.typeLookedUp === true;
     const typeCode = typeLookedUp
       ? airframe.typeCode
       : ((keepFeedType ? feedType : null) ?? airframe?.typeCode ?? null);
+    // The feed's own station type (GRND, TWR, GND): what the contact is,
+    // whatever a lookup answers; held while the feed sends no type.
+    const stationType = feedType
+      ? keepFeedType && STATION_FEED_TYPES.has(feedType)
+        ? feedType
+        : null
+      : (airframe?.stationType ?? null);
+    // A feed's transmitter flag holds while the contact stays on the ground
+    // and still; an airborne or moving report clears it.
+    const heldTransmitter =
+      airframe?.feedTransmitter === true &&
+      on_ground === true &&
+      !(Number.isFinite(velocity) && velocity > TRANSMITTER_MAX_SPEED_MPS);
+    const feedTransmitter = observation.transmitter === true || heldTransmitter;
+    // A ground transmitter (a TXLU callsign, a test transmitter on the
+    // ground, a feed's ground transmitter) is one whatever type a feed or a
+    // lookup gives it.
+    const transmitter = isGroundTransmitter({
+      callsign: nextCallsign,
+      onGround: on_ground === true,
+      transmitter: feedTransmitter,
+    });
+    // A ground station is fixed: it stands on the ground whatever height its
+    // reports carry, as if they carried none; a type a lookup gave too.
+    const station =
+      transmitter ||
+      stationType !== null ||
+      STATION_FEED_TYPES.has(typeCode ?? '');
+    const baro_alt = station ? null : reportedBaroAlt;
+    const geo_alt = station ? null : reportedGeoAlt;
     const onGround =
       on_ground === true ||
       station ||
@@ -316,8 +340,7 @@ export class FlightRecords {
       !!prevMeta && (prevMeta.onGround === true) !== onGround;
     // Store flight metadata for click-to-track labels
     // OpenSky's integer category, or a feed's ADS-B emitter category ("C1").
-    const cat = stickyCategory(category, prevMeta?.category);
-    const nextCallsign = stickyText(callsign, prevMeta?.callsign);
+    const cat = stickyCategory(category, airframe?.category);
     // A route (and its airline) belongs to the callsign it was looked up for;
     // a new callsign drops it, so an old flight's route never shows under it.
     const routeHeld =
@@ -366,8 +389,20 @@ export class FlightRecords {
       courseAnchor: course.anchor,
       category: cat,
       // A type code (the feed's, or a looked-up one) outranks the coarse
-      // emitter category, from the first fix.
-      klass: classifyAircraft({ typeCode, category: cat }),
+      // emitter category, from the first fix; a ground transmitter outranks
+      // both.
+      klass: classifyAircraft({
+        typeCode: stationType ?? typeCode,
+        category: cat,
+        callsign: nextCallsign,
+        onGround: on_ground === true,
+        transmitter,
+      }),
+      transmitter,
+      // The feed's own flag, held while on the ground and still. Without a
+      // callsign rule it is what the next report holds.
+      feedTransmitter,
+      stationType,
       turnRateDps: prevMeta?.turnRateDps || 0,
       verticalRate: stickyNumber(vertical_rate, prevMeta?.verticalRate, null),
       // Analyst seam: OpenSky origin_country (state[2]) — additive, sticky
@@ -461,26 +496,76 @@ export class FlightRecords {
   /**
    * Forget every observation, as when the world clock jumps to another time:
    * what an airframe is (its type, registration, route and photo) is kept for
-   * when it is seen again; where it was and when is not.
+   * when it is seen again; where it was and when is not. An airframe kept for
+   * a hidden contact loses its callsign, category and transmitter flag too.
    */
   reset() {
-    for (const [id, meta] of this.data) {
-      this.airframes.set(id, {
-        typeCode: meta.typeCode,
-        typeLookedUp: meta.typeLookedUp,
-        typeName: meta.typeName,
-        registration: meta.registration,
-        airline: meta.airline,
-        route: meta.route,
-        routeCallsign: meta.routeCallsign,
-        photo: meta.photo,
-      });
-    }
+    for (const [id, facts] of this.airframes)
+      this.airframes.set(id, airframeFacts(facts));
+    for (const [id, meta] of this.data)
+      this.airframes.set(id, airframeFacts(meta));
     this.data.clear();
     this.missingPolls.clear();
     this.fixRepeated.clear();
     this.lastSnapshotMs = null;
     this.snapshotAdvanced = true;
+  }
+
+  /**
+   * What the airframe of a held contact is, for {@link FlightRecords#keepAirframe},
+   * with the callsign, category and feed's transmitter flag it last had, so a
+   * hidden contact keeps them through a report that omits them. A reset keeps
+   * only the airframe's facts, so a time jump carries no callsign over.
+   * Without a reset they stay with the kept airframe, which has no missed-poll
+   * limit, until the contact is seen again or the oldest airframes are
+   * dropped.
+   * @param {string} id
+   * @returns {object|null}
+   */
+  airframeOf(id) {
+    const meta = this.data.get(id);
+    return meta
+      ? {
+          ...airframeFacts(meta),
+          callsign: meta.callsign,
+          category: meta.category,
+          feedTransmitter: meta.feedTransmitter,
+        }
+      : null;
+  }
+
+  /**
+   * Keep what an airframe is after its contact is forgotten (its category is
+   * hidden), so it classes the same when it is drawn again. At most
+   * MAX_KEPT_AIRFRAMES are kept, the oldest dropped first.
+   * @param {string} id
+   * @param {object|null} facts From {@link FlightRecords#airframeOf}.
+   */
+  keepAirframe(id, facts) {
+    if (!facts) return;
+    this.airframes.delete(id);
+    this.airframes.set(id, facts);
+    if (this.airframes.size > MAX_KEPT_AIRFRAMES)
+      this.airframes.delete(this.airframes.keys().next().value);
+  }
+
+  /**
+   * Note a looked-up type for a contact whose category is hidden, on the
+   * airframe kept for it, so it classes by it when it is drawn again.
+   * @param {string} id
+   * @param {{typeCode?: string, typeName?: string, registration?: string}} [data]
+   * @returns {boolean} Whether an airframe was kept for it.
+   */
+  keepLookedUpType(id, { typeCode, typeName, registration } = {}) {
+    const facts = this.airframes.get(id);
+    if (!facts) return false;
+    if (typeCode) {
+      facts.typeCode = typeCode;
+      facts.typeLookedUp = true;
+    }
+    facts.typeName = typeName || facts.typeName;
+    facts.registration = registration || facts.registration;
+    return true;
   }
 
   forget(id) {
@@ -490,6 +575,25 @@ export class FlightRecords {
     this.fixRepeated.delete(id);
     this.geoidNCache.delete(id);
   }
+}
+
+/** The most airframes {@link FlightRecords#keepAirframe} keeps. */
+const MAX_KEPT_AIRFRAMES = 20000;
+
+/** What an airframe is, kept across a reset or a hidden category. */
+function airframeFacts(meta) {
+  return {
+    typeCode: meta.typeCode,
+    typeLookedUp: meta.typeLookedUp,
+    typeName: meta.typeName,
+    registration: meta.registration,
+    airline: meta.airline,
+    route: meta.route,
+    routeCallsign: meta.routeCallsign,
+    photo: meta.photo,
+    // A station is fixed: its feed's station type is kept across a reset too.
+    stationType: meta.stationType ?? null,
+  };
 }
 
 /** An ADS-B emitter category as a feed gives it ("A3", "C1"). */
@@ -515,10 +619,14 @@ function cleanType(value) {
   return text || null;
 }
 
-/** The types a feed gives airport vehicles (ZVEH) and ground stations (GRND). */
-const GROUND_FEED_TYPES = new Set(['ZVEH', 'GRND']);
+/** The types a feed gives ground stations: GRND, and TWR or GND for a fixed transmitter. */
+const STATION_FEED_TYPES = new Set(['GRND', 'TWR', 'GND']);
+/** The types a feed gives airport vehicles (ZVEH) and ground stations. */
+const GROUND_FEED_TYPES = new Set(['ZVEH', ...STATION_FEED_TYPES]);
 /** The fastest an airport vehicle drives, m/s (144 km/h); faster, it is no vehicle. */
 const VEHICLE_MAX_SPEED_MPS = 40;
+/** The fastest a fixed transmitter's reports may say it moves, m/s (about 2 kt). */
+const TRANSMITTER_MAX_SPEED_MPS = 1;
 
 /** Per loaded fleet model set: whether a type, category and callsign rule draw a ground model. */
 const groundModelCaches = new WeakMap();

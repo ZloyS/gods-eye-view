@@ -4645,5 +4645,15 @@
   "Reference monitor": "מכשיר ניטור ייחוס",
   "Needs {envVars} — add one in Provider Settings": "דורש {envVars} — הוסף אחד מהם בהגדרות הספקים",
   "CABLE \u00b7 {name}": "כבל · {name}",
-  "LANDING POINT \u00b7 {name}": "נקודת נחיתה · {name}"
+  "LANDING POINT \u00b7 {name}": "נקודת נחיתה · {name}",
+  "Balloon": "כדור פורח",
+  "Aircraft": "כלי טיס",
+  "Test transmitter": "משדר בדיקה",
+  "aircraft category|Airliners": "מטוסי נוסעים",
+  "aircraft category|Regional": "אזוריים",
+  "aircraft category|Business": "מנהלים",
+  "aircraft category|Light": "קלים",
+  "aircraft category|Helicopters": "מסוקים",
+  "aircraft category|Ground": "קרקע",
+  "aircraft category|Other": "אחרים"
 }

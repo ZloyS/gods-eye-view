@@ -155,7 +155,13 @@ export function createEnrichment({
       { kind: 'type', id: icao24.toLowerCase() },
       (data) => {
         const meta = flightState.records.data.get(icao24);
-        if (!meta) return; // evicted while the lookup was in flight
+        if (!meta) {
+          // Hidden by its category: its kept airframe takes the answer. Gone
+          // altogether: it may be asked again when it is seen.
+          if (!flightState.records.keepLookedUpType(icao24, data))
+            flightState._enrichSeen.delete(`t:${icao24}`);
+          return;
+        }
         // A looked-up type outranks the feed's own from now on.
         if (data.typeCode) {
           meta.typeCode = data.typeCode;
@@ -164,12 +170,24 @@ export function createEnrichment({
         meta.typeName = data.typeName || meta.typeName;
         meta.registration = data.registration || meta.registration;
         if (meta.typeCode) {
+          // A ground transmitter or a feed's station stays one whatever type
+          // the lookup gives.
           const klass = classifyAircraft({
-            typeCode: meta.typeCode,
+            typeCode: meta.stationType ?? meta.typeCode,
             category: meta.category,
+            callsign: meta.callsign,
+            onGround: meta.onGround,
+            transmitter: meta.transmitter,
           });
           if (klass !== meta.klass) {
+            const previous = meta.klass;
             meta.klass = klass;
+            // Now in a hidden category: it goes, as at the next poll.
+            if (
+              parts.categories &&
+              !parts.categories.reclassified(icao24, meta, previous)
+            )
+              return;
             parts.icons._applyIconPresentation(icao24);
           }
           // The type picks the fleet model and its length — resync the live
@@ -315,15 +333,28 @@ export function createEnrichment({
         if (sphereOutside(planes, position, AMBIENT_CULL_RADIUS_M)) continue; // off-screen
         cand.push([icao24, distanceSquared(camPos, position)]);
       }
+      // Untyped contacts a hidden category dropped: a type may move them into
+      // a shown one.
+      const hidden = [];
+      for (const [icao24, hiddenPosition] of flightState._hiddenFixes ?? []) {
+        if (_enrichHeld(`t:${icao24}`)) continue;
+        if (!/^[0-9a-f]{6}$/i.test(icao24)) continue;
+        if (!occluder.isPointVisible(hiddenPosition)) continue;
+        if (sphereOutside(planes, hiddenPosition, AMBIENT_CULL_RADIUS_M))
+          continue;
+        hidden.push([icao24, distanceSquared(camPos, hiddenPosition)]);
+      }
       cand.sort((a, b) => a[1] - b[1]); // nearest first — what the user is looking at resolves first
+      hidden.sort((a, b) => a[1] - b[1]);
+      const queue = [...cand, ...hidden];
       const n = Math.min(
-        cand.length,
+        queue.length,
         ENRICH_AMBIENT_PER_SWEEP,
         flightState._enrichAmbientBudget,
       );
       for (let i = 0; i < n; i++) {
         flightState._enrichAmbientBudget -= 1;
-        _requestTypeEnrichment(cand[i][0]); // non-priority: fills the back of the queue
+        _requestTypeEnrichment(queue[i][0]); // non-priority: fills the back of the queue
       }
     } catch {
       /* ambient enrichment is best-effort — never disturb the poll loop */

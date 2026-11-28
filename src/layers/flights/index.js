@@ -12,6 +12,7 @@ import { createEvidence } from './evidence.js';
 import { createTesting } from './testing.js';
 import { createQueries } from './queries.js';
 import { createClockFollow } from './clockFollow.js';
+import { createCategories } from './categories.js';
 import {
   createSnapshotTimeline,
   snapshotAnswer,
@@ -38,6 +39,7 @@ export function createCivilFlightLayer({
   parts.testing = createTesting(context);
   parts.queries = createQueries(context);
   parts.clockFollow = createClockFollow(context);
+  parts.categories = createCategories(context);
   const applySnapshot = createFlightSnapshotRenderer({
     flightState,
     placement: services.placement ?? null,
@@ -50,6 +52,7 @@ export function createCivilFlightLayer({
     icons: parts.icons,
     enrichment: parts.enrichment,
     queries: parts.queries,
+    categories: parts.categories,
   });
   parts.ingestion = createIngestion({
     feed: flightState.feed,

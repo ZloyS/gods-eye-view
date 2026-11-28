@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { createIngestion } from './ingestion.js';
+import { createFlightFeed, createIngestion } from './ingestion.js';
 
 function setup(source) {
   const feed = {
@@ -82,4 +82,46 @@ test('civil acquisition publishes source time and uses a replaced source on the 
   assert.equal(probe.feed._lastError, 'Source snapshot time unavailable');
   assert.deepEqual(probe.labels, ['First', 'Second']);
   assert.equal(probe.restores.length, 2);
+});
+
+test('an older live poll that fails after a newer one applied leaves the feed healthy', async (t) => {
+  const pending = [];
+  const source = {
+    label: 'Fixture',
+    getSnapshot: () =>
+      new Promise((resolve, reject) => pending.push({ resolve, reject })),
+  };
+  const feed = createFlightFeed(source);
+  const accepted = [];
+  const { methods } = createIngestion({
+    feed,
+    getQuery: () => ({}),
+    applySnapshot: (snapshot) => {
+      accepted.push(snapshot);
+      return { count: 3, ids: new Set() };
+    },
+    setSourceLabel: () => {},
+    applyPendingTrackingRestore: () => {},
+  });
+  const warn = t.mock.method(console, 'warn', () => {});
+  t.mock.method(console, 'log', () => {});
+  const older = methods.update(null);
+  const newer = methods.update(null);
+  pending[1].resolve({ records: [], observedAtMs: 2000, freshness: 'fresh' });
+  await newer;
+  const failure = Object.assign(new Error('upstream 503'), {
+    status: 503,
+    retryAfterMs: 60_000,
+  });
+  pending[0].reject(failure);
+  await older;
+  assert.equal(accepted.length, 1);
+  assert.equal(feed._count, 3);
+  assert.equal(feed._lastUpdate, 2000);
+  assert.equal(feed._backoff, false);
+  assert.equal(feed._retryAt, 0);
+  assert.equal(feed._lastError, null);
+  assert.equal(feed._lastStatus, 200);
+  assert.equal(warn.mock.callCount(), 0);
+  assert.equal(feed._activeUpdateControllers.size, 0);
 });

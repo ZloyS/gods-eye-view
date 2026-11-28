@@ -4435,5 +4435,15 @@
   "Reference monitor": "參考監測儀",
   "Needs {envVars} — add one in Provider Settings": "需要 {envVars}，請在服務商設置中添加其中一個",
   "CABLE · {name}": "海纜 · {name}",
-  "LANDING POINT · {name}": "登陸點 · {name}"
+  "LANDING POINT · {name}": "登陸點 · {name}",
+  "Balloon": "氣球",
+  "Aircraft": "航空器",
+  "Test transmitter": "測試發射機",
+  "aircraft category|Airliners": "客機",
+  "aircraft category|Regional": "支線飛機",
+  "aircraft category|Business": "公務機",
+  "aircraft category|Light": "輕型飛機",
+  "aircraft category|Helicopters": "直升機",
+  "aircraft category|Ground": "地面",
+  "aircraft category|Other": "其他"
 }

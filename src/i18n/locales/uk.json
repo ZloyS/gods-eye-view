@@ -4750,5 +4750,15 @@
   "Reference monitor": "Еталонний прилад",
   "Needs {envVars} — add one in Provider Settings": "Потрібен {envVars} — додайте будь-який із них у «Налаштуваннях постачальників»",
   "CABLE \u00b7 {name}": "КАБЕЛЬ · {name}",
-  "LANDING POINT \u00b7 {name}": "ТОЧКА ВИХОДУ НА БЕРЕГ · {name}"
+  "LANDING POINT \u00b7 {name}": "ТОЧКА ВИХОДУ НА БЕРЕГ · {name}",
+  "Balloon": "Повітряна куля",
+  "Aircraft": "Повітряне судно",
+  "Test transmitter": "Тестовий передавач",
+  "aircraft category|Airliners": "Авіалайнери",
+  "aircraft category|Regional": "Регіональні",
+  "aircraft category|Business": "Бізнес",
+  "aircraft category|Light": "Легкі",
+  "aircraft category|Helicopters": "Гелікоптери",
+  "aircraft category|Ground": "Наземні",
+  "aircraft category|Other": "Інші"
 }

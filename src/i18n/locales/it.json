@@ -4645,5 +4645,15 @@
   "Reference monitor": "Strumento di riferimento",
   "Needs {envVars} — add one in Provider Settings": "Richiede {envVars}: aggiungine una in Impostazioni provider",
   "CABLE \u00b7 {name}": "CAVO · {name}",
-  "LANDING POINT \u00b7 {name}": "PUNTO DI APPRODO · {name}"
+  "LANDING POINT \u00b7 {name}": "PUNTO DI APPRODO · {name}",
+  "Balloon": "Pallone aerostatico",
+  "Aircraft": "Aeromobile",
+  "Test transmitter": "Trasmettitore di prova",
+  "aircraft category|Airliners": "Aerei di linea",
+  "aircraft category|Regional": "Regionali",
+  "aircraft category|Business": "Business",
+  "aircraft category|Light": "Leggeri",
+  "aircraft category|Helicopters": "Elicotteri",
+  "aircraft category|Ground": "A terra",
+  "aircraft category|Other": "Altri"
 }

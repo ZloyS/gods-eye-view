@@ -119,6 +119,9 @@ export function createFlightState({ source, services }) {
 
   flightState._pendingTrackingRestore = null;
 
+  /** @type {string|null} A share link's target, held drawable through the refresh that looks for it */
+  flightState._restoreCandidate = null;
+
   flightState._trackingIntentGeneration = 0;
 
   /** @type {object|null} The tracked aircraft's record holder (its entity record is what the app shows; the camera follows a target reading it) */

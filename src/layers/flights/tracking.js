@@ -61,6 +61,7 @@ import {
 } from '../../data/trailContinuity.js';
 import { roundHeadingDegrees } from '../../data/headingDegrees.js';
 import { entityRecord } from '../../data/entityRecords.js';
+import { isStationClass } from '../../data/aircraftClass.js';
 
 /**
  * The icao a click's hit carries (`event.hit`, the contract's `Hit`): a
@@ -763,6 +764,8 @@ export function createTracking({
     parts.motion._resetTrackedDisplay();
     _clearTrail();
     releaseSelection('flights', clearedIcao);
+    // Its category may be hidden: it goes now, not at the next poll.
+    parts.categories?.refilter(clearedIcao);
   }
 
   /**
@@ -807,8 +810,10 @@ export function createTracking({
   }
 
   function _cancelPendingTrackingRestore() {
+    const previous = flightState._pendingTrackingRestore?.id;
     flightState._trackingIntentGeneration += 1;
     flightState._pendingTrackingRestore = null;
+    if (previous) parts.categories?.refilter(previous);
   }
 
   /**
@@ -1011,6 +1016,7 @@ export function createTracking({
       }
     }
     parts.icons._applyIconPresentation(id);
+    parts.categories?.refilter(id);
     if (id === flightState._trackedIcao) {
       _syncTrackedBillboardImage();
       _updateTrackedLabelModel(id);
@@ -1194,7 +1200,7 @@ export function createTracking({
         if (!tracked || !pos || !flightState._viewer)
           return flightState._lastTrackedRotation;
         // A ground station's mast stands upright.
-        if (tracked.klass === 'station') return 0;
+        if (isStationClass(tracked.klass)) return 0;
         const projected = courseScreenRotation(
           _pose(),
           pos,

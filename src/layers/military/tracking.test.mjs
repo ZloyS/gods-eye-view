@@ -7,15 +7,15 @@ const source = (layer) =>
 
 for (const layer of ['military', 'flights']) {
   test(`${layer}: a tracked ground station's mast is never turned`, () => {
-    // The tracked billboard's rotation answers 0 for a station before any
-    // course is projected on screen.
+    // The tracked billboard's rotation answers 0 for a station (or a test
+    // transmitter) before any course is projected on screen.
     const rotation = /rotation: \(\) => \{[\s\S]*?courseScreenRotation\(/.exec(
       source(layer),
     )?.[0];
     assert.ok(rotation, 'the tracked billboard turns by a rotation callback');
     assert.match(
       rotation,
-      /if \(tracked\.klass === 'station'\) return 0;\s*const projected = courseScreenRotation\(/,
+      /if \(isStationClass\(tracked\.klass\)\) return 0;\s*const projected = courseScreenRotation\(/,
     );
   });
 }

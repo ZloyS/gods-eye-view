@@ -48,6 +48,7 @@ export const CLASS_MODELS = Object.freeze({
   fastjet: 't38',
   bizjet: 'c56x',
   uav: 'mq9',
+  station: 'radio_mast',
 });
 
 /** OpenSky's integer aircraft category (state vector index 17) → ADS-B emitter category. */
@@ -406,16 +407,19 @@ function specOf(set, resolved, fallback, options) {
  * vehicle by its callsign), then the type's entry; then, for a
  * type the map lacks, the model of its class (a fast jet, a helicopter, a
  * glider) when the type names one; then the emitter category's; then
- * `default_aircraft`.
+ * `default_aircraft`. A ground transmitter (`transmitter`) is the ground
+ * station's model whatever its type.
  * @param {{catalog: object, types: object}} set
  * @param {{typeCode?: string|null, type?: string|null,
- *   category?: string|number|null, callsign?: string|null}} aircraft
+ *   category?: string|number|null, callsign?: string|null,
+ *   transmitter?: boolean}} aircraft
  * @returns {object} {@link fleetModelSpec}
  */
 export function aircraftModelSpec(
   set,
-  { typeCode, type, category, callsign } = {},
+  { typeCode, type, category, callsign, transmitter } = {},
 ) {
+  if (transmitter === true) return aircraftModelSpec(set, { typeCode: 'GRND' });
   const { types, catalog } = set;
   const code = String(typeCode ?? type ?? '')
     .trim()

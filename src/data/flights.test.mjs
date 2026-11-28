@@ -118,6 +118,8 @@ test('flights analyst record: full record maps every contract field', () => {
     aircraftClass: 'airliner',
     typeCode: 'B738',
     category: 'A3',
+    transmitter: false,
+    stationType: null,
     originCountry: 'United States',
     operator: 'Southwest Airlines',
     squawk: null,

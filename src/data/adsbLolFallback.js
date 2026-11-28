@@ -1,4 +1,7 @@
-import { readAdsbVerticalRateFpm } from '../sources/adsbFields.js';
+import {
+  isReadsbGroundTransmitter,
+  readAdsbVerticalRateFpm,
+} from '../sources/adsbFields.js';
 
 const KNOT_TO_MPS = 0.514444;
 const FOOT_TO_M = 0.3048;
@@ -28,6 +31,11 @@ function emitterCategory(value) {
     B4: 12,
     B6: 14,
     B7: 15,
+    C1: 16,
+    C2: 17,
+    C3: 18,
+    C4: 19,
+    C5: 20,
   };
   return categories[category] || 0;
 }
@@ -98,7 +106,7 @@ export function normalizeAdsbLolAircraftState(aircraft, nowSeconds) {
  * Normalize an adsb.lol point response to an OpenSky-compatible response.
  * Invalid rows and positionless contacts are intentionally excluded.
  * @param {object} payload adsb.lol v2 response.
- * @returns {{time:number,states:Array[],emergencyByIcao?:object,typeByIcao?:object}}
+ * @returns {{time:number,states:Array[],emergencyByIcao?:object,typeByIcao?:object,transmitterByIcao?:string[]}}
  */
 export function normalizeAdsbLolPointResponse(payload) {
   const responseNow = finiteNumber(payload?.now);
@@ -115,6 +123,7 @@ export function normalizeAdsbLolPointResponse(payload) {
   const admitted = new Set();
   const statuses = [];
   const types = [];
+  const transmitters = [];
   for (const row of aircraft) {
     const state = normalizeAdsbLolAircraftState(row, nowSeconds);
     if (!state) continue;
@@ -128,6 +137,7 @@ export function normalizeAdsbLolPointResponse(payload) {
       statuses.push([id, row.emergency.trim().toLowerCase()]);
     const type = typeof row.t === 'string' ? row.t.trim().toUpperCase() : '';
     if (type) types.push([id, type]);
+    if (isReadsbGroundTransmitter(row)) transmitters.push(id);
   }
   const emergencyByIcao = Object.fromEntries(statuses);
   const typeByIcao = Object.fromEntries(types);
@@ -138,5 +148,8 @@ export function normalizeAdsbLolPointResponse(payload) {
     // The ICAO type designator (readsb `t`), so the aircraft is classed from
     // its first fix instead of after a lookup.
     ...(types.length ? { typeByIcao } : {}),
+    // Ground transmitters (emitter category C0, which the state vector's
+    // category cannot carry), so they class as ground stations.
+    ...(transmitters.length ? { transmitterByIcao: transmitters } : {}),
   };
 }

@@ -59,6 +59,16 @@ const HELI = new Set([
   'AC',
   'H47',
   'H64',
+  'H269',
+  'B206',
+  'EC75',
+  'EH10',
+  'H1',
+  'TIGR',
+  'V22',
+  'GYRO',
+  'H160',
+  'AW09',
 ]);
 const QUAD = new Set([
   'B741',
@@ -79,7 +89,11 @@ const QUAD = new Set([
   'A225',
   'IL96',
   'B52',
-  'A140',
+  'E3TF',
+  'E3CF',
+  'IL62',
+  'IL76',
+  'B703',
 ]);
 const WIDE = new Set([
   'A306',
@@ -166,6 +180,29 @@ const TPROP = new Set([
   'CVLT',
   'SAAB',
   'A400',
+  'C30J',
+  'F406',
+  'SC7',
+  'BE9L',
+  'BE10',
+  'C27J',
+  'A140',
+  'P46T',
+  'BE30',
+  'P180',
+  'EPIC',
+  'TEX2',
+  'PC21',
+  'PC9',
+  'PC7',
+  'T6',
+  'BT7',
+  'PC6T',
+  'L410',
+  'Y12',
+  'AN24',
+  'CN35',
+  'C295',
 ]);
 const GLIDER = new Set([
   'DISC',
@@ -207,6 +244,9 @@ const GLIDER = new Set([
   'GLID',
   'MOSQ',
   'DIMO',
+  'GLIM',
+  'SLG2',
+  'SLG4',
 ]);
 const LIGHT = new Set([
   'C150',
@@ -269,6 +309,52 @@ const LIGHT = new Set([
   'G115',
   'BL8',
   'CH7',
+  'C140',
+  'C402',
+  'C77R',
+  'T206',
+  'T210',
+  'PA11',
+  'PA22',
+  'PA30',
+  'PA31',
+  'BE55',
+  'BE95',
+  'TB20',
+  'DV20',
+  'M7',
+  'ERCO',
+  'RV12',
+  'XL2',
+  'WT9',
+  'CH7A',
+  'CH7B',
+  'DHC1',
+  'T34P',
+  'LNP4',
+  'PISI',
+  'PIAT',
+  'P06T',
+  'P208',
+  'P212',
+  'P68',
+  'BN2P',
+  'C170',
+  'C82R',
+  'C82S',
+  'C82T',
+  'C414',
+  'C421',
+  'PA23',
+  'BE50',
+  'AC68',
+  'GA7',
+  'C320',
+  'TB30',
+  'PIVI',
+  'ULAC',
+  'DHC2',
+  'DHC3',
 ]);
 // GEV addition (2026-08-15 Hangar fleet): business jets — distinct class so the
 // Citation II GLB + a slimmer glyph read apart from airliners.
@@ -337,7 +423,99 @@ const BIZJET = new Set([
   'ASTR',
   'WW24',
   'SF50', // Cirrus Vision Jet — a JET (was mis-set in LIGHT before the bizjet class existed)
+  'C55B',
+  'E35L',
+  'EA50',
+  'GALX',
+  'FA6X',
 ]);
+// Narrow-body jets.
+const AIRLINER = new Set([
+  'A318',
+  'A319',
+  'A320',
+  'A321',
+  'A19N',
+  'A20N',
+  'A21N',
+  'BCS1',
+  'BCS3',
+  'B712',
+  'B721',
+  'B722',
+  'B731',
+  'B732',
+  'B733',
+  'B734',
+  'B735',
+  'B736',
+  'B737',
+  'B738',
+  'B739',
+  'B37M',
+  'B38M',
+  'B39M',
+  'B3XM',
+  'B752',
+  'B753',
+  'DC85',
+  'DC86',
+  'DC87',
+  'DC91',
+  'DC92',
+  'DC93',
+  'DC94',
+  'DC95',
+  'MD81',
+  'MD82',
+  'MD83',
+  'MD87',
+  'MD88',
+  'MD90',
+  'C919',
+  'MC23',
+  'YK42',
+  'T134',
+  'T154',
+  'T204',
+  'P8',
+]);
+// Regional jets: their own class under Regional, drawn and named as airliners.
+const REGIONAL_JET = new Set([
+  'E135',
+  'E145',
+  'E45X',
+  'E170',
+  'E75L',
+  'E75S',
+  'E190',
+  'E195',
+  'E290',
+  'E295',
+  'CRJ1',
+  'CRJ2',
+  'CRJ7',
+  'CRJ9',
+  'CRJX',
+  'F28',
+  'F70',
+  'F100',
+  'B461',
+  'B462',
+  'B463',
+  'RJ70',
+  'RJ85',
+  'RJ1H',
+  'SU95',
+  'AJ27',
+  'J328',
+  'A148',
+  'A158',
+  'YK40',
+  'E275',
+]);
+// Lighter-than-air: balloons and airships.
+const BALLOON = new Set(['BALL', 'SHIP']);
 // GEV addition (2026-08-15 Hangar fleet): large UAVs — ICAO designators seen on
 // ADS-B/adsb.lol for Predator/Reaper/Global Hawk-class airframes.
 const UAV = new Set([
@@ -351,6 +529,7 @@ const UAV = new Set([
   'TB2',
   'SHDW',
   'HERN',
+  'DRON',
 ]);
 // GEV addition: fast jets, for the military layer's adsb.lol `t` codes.
 const FASTJET = new Set([
@@ -389,6 +568,8 @@ const FASTJET = new Set([
   'L39',
   'M346',
   'T7A',
+  'F18S',
+  'T45',
 ]);
 
 /** OpenSky extended-states integer category → class. */
@@ -401,6 +582,9 @@ const OPENSKY_CATEGORY = {
   7: 'fastjet', // High performance (>5g, >400 kt)
   8: 'helicopter', // Rotorcraft
   9: 'glider',
+  10: 'balloon', // Lighter than air
+  12: 'light', // Ultralight, hang glider, paraglider
+  14: 'uav', // Unmanned aerial vehicle
   16: 'vehicle', // Surface vehicle, emergency
   17: 'vehicle', // Surface vehicle, service
   18: 'station', // Point obstacle
@@ -418,6 +602,9 @@ const EMITTER_CATEGORY = {
   A6: 'fastjet',
   A7: 'helicopter',
   B1: 'glider',
+  B2: 'balloon', // Lighter than air
+  B4: 'light', // Ultralight, hang glider, paraglider
+  B6: 'uav', // Unmanned aerial vehicle
   C1: 'vehicle', // Surface vehicle, emergency
   C2: 'vehicle', // Surface vehicle, service
   C3: 'station', // Point obstacle
@@ -427,21 +614,75 @@ const EMITTER_CATEGORY = {
 
 /**
  * The type codes feeds give what is not an aircraft: an airport vehicle
- * (ZVEH) and a ground station (GRND).
+ * (ZVEH) and a ground station (GRND, and the TWR and GND some feeds give a
+ * fixed transmitter).
  */
-const GROUND_TYPE_CLASS = { ZVEH: 'vehicle', GRND: 'station' };
+const GROUND_TYPE_CLASS = {
+  ZVEH: 'vehicle',
+  GRND: 'station',
+  TWR: 'station',
+  GND: 'station',
+};
+
+/** The callsign of a fixed transmitter on an airfield (TXLU00, TXLU13). */
+const TRANSMITTER_CALLSIGN = /^TXLU\d+$/;
+/** The callsign of a test transmitter (ADSTEST, TEST, TEST1). */
+const TEST_CALLSIGN = /^(?:ADS)?TEST\d*$/;
 
 /**
- * The class an aircraft draws and reads as, from its ICAO type code (which
- * outranks the category), else its OpenSky integer or ADS-B emitter category.
+ * Whether a contact is a fixed ground transmitter, whatever type a feed or a
+ * lookup gives it: a TXLU transmitter by its callsign, a test transmitter
+ * (callsign ADSTEST or TEST, alone or with digits) on the ground, or a contact
+ * its feed reports as a ground transmitter (`transmitter`: readsb's emitter
+ * category C0 and message type `adsb_icao_nt` on the ground).
+ * @param {{callsign?: string|null, onGround?: boolean, transmitter?: boolean}} [contact]
+ * @returns {boolean}
+ */
+export function isGroundTransmitter({ callsign, onGround, transmitter } = {}) {
+  if (transmitter === true) return true;
+  const sign = String(callsign || '')
+    .trim()
+    .toUpperCase();
+  if (!sign) return false;
+  return (
+    TRANSMITTER_CALLSIGN.test(sign) ||
+    (onGround === true && TEST_CALLSIGN.test(sign))
+  );
+}
+
+/**
+ * The class an aircraft draws and reads as. A test transmitter (callsign
+ * ADSTEST or TEST, alone or with digits, on the ground) is a
+ * `testtransmitter`, and any other ground transmitter
+ * ({@link isGroundTransmitter}) a `station`, whatever its type. Otherwise its
+ * ICAO type code decides, else its OpenSky integer or ADS-B emitter category.
  * Besides the aircraft classes, `vehicle` is an airport vehicle (type ZVEH,
  * emitter C1 or C2) and `station` a ground station or obstacle (type GRND,
- * emitter C3 to C5). A known type code outside every set is an airliner, and
- * so is a contact with nothing to go on.
- * @param {{typeCode?: string|null, category?: string|number|null}} [record]
+ * TWR or GND, emitter C3 to C5). A type code in no set is `unknown`; only a
+ * contact with no type falls back to its OpenSky or ADS-B emitter category,
+ * and a contact with nothing to go on is `unknown` too.
+ * @param {{typeCode?: string|null, category?: string|number|null,
+ *   callsign?: string|null, onGround?: boolean, transmitter?: boolean}} [record]
  * @returns {string}
  */
-export function classifyAircraft({ typeCode, category } = {}) {
+export function classifyAircraft({
+  typeCode,
+  category,
+  callsign,
+  onGround,
+  transmitter,
+} = {}) {
+  if (
+    onGround === true &&
+    TEST_CALLSIGN.test(
+      String(callsign || '')
+        .trim()
+        .toUpperCase(),
+    )
+  )
+    return 'testtransmitter';
+  if (isGroundTransmitter({ callsign, onGround, transmitter }))
+    return 'station';
   const code = String(typeCode || '')
     .trim()
     .toUpperCase();
@@ -452,11 +693,14 @@ export function classifyAircraft({ typeCode, category } = {}) {
     if (HELI.has(code)) return 'helicopter';
     if (QUAD.has(code)) return 'quadjet';
     if (WIDE.has(code)) return 'widebody';
+    if (AIRLINER.has(code)) return 'airliner';
+    if (REGIONAL_JET.has(code)) return 'regionaljet';
     if (TPROP.has(code)) return 'turboprop';
     if (GLIDER.has(code)) return 'glider';
+    if (BALLOON.has(code)) return 'balloon';
     if (BIZJET.has(code)) return 'bizjet';
     if (LIGHT.has(code)) return 'light';
-    return 'airliner'; // known type code, not in a special set → default jet
+    return 'unknown';
   }
   if (Number.isFinite(category) && OPENSKY_CATEGORY[category])
     return OPENSKY_CATEGORY[category];
@@ -464,7 +708,16 @@ export function classifyAircraft({ typeCode, category } = {}) {
     .trim()
     .toUpperCase();
   if (EMITTER_CATEGORY[cat]) return EMITTER_CATEGORY[cat];
-  return 'airliner';
+  return 'unknown';
+}
+
+/**
+ * A fixed ground station: drawn upright, never turned along a course.
+ * @param {string|null|undefined} klass A {@link classifyAircraft} class.
+ * @returns {boolean}
+ */
+export function isStationClass(klass) {
+  return klass === 'station' || klass === 'testtransmitter';
 }
 
 /** Readable name of each class, for cards and readouts (English data). */
@@ -473,14 +726,72 @@ export const AIRCRAFT_CLASS_LABELS = Object.freeze({
   glider: msg('Glider'),
   turboprop: msg('Turboprop'),
   airliner: msg('Airliner'),
+  regionaljet: msg('Airliner'),
   widebody: msg('Widebody'),
   quadjet: msg('Four-engine jet'),
   helicopter: msg('Helicopter'),
   fastjet: msg('Fast jet'),
   bizjet: msg('Business jet'),
   uav: msg('Drone'),
+  balloon: msg('Balloon'),
   vehicle: msg('Airport vehicle'),
   station: msg('Ground station / obstacle'),
+  testtransmitter: msg('Test transmitter'),
+  unknown: msg('Aircraft'),
+});
+
+/** The categories the Flights layer shows or hides, in row order. */
+export const AIRCRAFT_CATEGORIES = Object.freeze([
+  'airliners',
+  'regional',
+  'bizjets',
+  'light',
+  'helicopters',
+  'ground',
+  'other',
+]);
+
+/** The category of each class ({@link aircraftCategory}). */
+const CLASS_CATEGORY = Object.freeze({
+  airliner: 'airliners',
+  widebody: 'airliners',
+  quadjet: 'airliners',
+  turboprop: 'regional',
+  regionaljet: 'regional',
+  bizjet: 'bizjets',
+  light: 'light',
+  helicopter: 'helicopters',
+  vehicle: 'ground',
+  station: 'ground',
+  testtransmitter: 'ground',
+  glider: 'other',
+  balloon: 'other',
+  fastjet: 'other',
+  uav: 'other',
+  unknown: 'other',
+});
+
+/**
+ * The category a class belongs to; a class it does not know is `other`.
+ * @param {string|null|undefined} klass A {@link classifyAircraft} class.
+ * @returns {string} One of {@link AIRCRAFT_CATEGORIES}.
+ */
+export function aircraftCategory(klass) {
+  return Object.hasOwn(CLASS_CATEGORY, klass) ? CLASS_CATEGORY[klass] : 'other';
+}
+
+/**
+ * Each category's English name. The Flights row's chips show it through t()
+ * with the `aircraft category` context (src/layers/flights/categories.js).
+ */
+export const AIRCRAFT_CATEGORY_LABELS = Object.freeze({
+  airliners: 'Airliners',
+  regional: 'Regional',
+  bizjets: 'Business',
+  light: 'Light',
+  helicopters: 'Helicopters',
+  ground: 'Ground',
+  other: 'Other',
 });
 
 /**

@@ -339,6 +339,12 @@ const TRACKED_RASTER_PX = 192;
 
 /** Raster size of the tracked glyph and every glyph's near image. */
 export const TRACKED_ICON_PX = TRACKED_RASTER_PX;
+/** Classes drawn with another class's glyph. */
+const ICON_KIND_ALIASES = Object.freeze({
+  regionaljet: 'airliner',
+  testtransmitter: 'station',
+});
+
 /**
  * Data URI for a class silhouette (lazily built, cached per kind, size and
  * frame). The default size serves the fleet; pass
@@ -350,6 +356,7 @@ export const TRACKED_ICON_PX = TRACKED_RASTER_PX;
  * @returns {string}
  */
 export function aircraftIcon(kind, px = FLEET_RASTER_PX, frame) {
+  kind = ICON_KIND_ALIASES[kind] ?? kind;
   const heli = kind === 'helicopter';
   const k = heli || BODIES[kind] ? kind : 'airliner';
   const f = heli ? rotorFrameIndex(frame) : 0;

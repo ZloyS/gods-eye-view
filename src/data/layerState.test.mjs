@@ -31,6 +31,17 @@ import { MAX_SINCE_DAYS } from '../layers/streetLevel/policy.js';
 import { SINCE_STOPS } from '../ui/streetLevelPresentation.js';
 import { FIRMS_CONFIDENCE_MODES, MIN_FRP_MW_MAX } from './firmsIntensity.js';
 
+/** The Flights category toggles as a fresh state holds them: all shown. */
+const SHOWN_FLIGHT_CATEGORIES = Object.freeze({
+  airliners: true,
+  regional: true,
+  bizjets: true,
+  light: true,
+  helicopters: true,
+  ground: true,
+  other: true,
+});
+
 function deferred() {
   let resolve;
   let reject;
@@ -93,6 +104,20 @@ function fakeLayer(id, hooks = {}) {
       ? {
           async resolveTrackingRestoreTarget(targetId, options) {
             return hooks.resolveTrackingRestoreTarget(targetId, options);
+          },
+        }
+      : {}),
+    ...(hooks.prepareTrackingRestoreTarget
+      ? {
+          prepareTrackingRestoreTarget(targetId) {
+            return hooks.prepareTrackingRestoreTarget(targetId);
+          },
+        }
+      : {}),
+    ...(hooks.releaseTrackingRestoreTarget
+      ? {
+          releaseTrackingRestoreTarget(targetId) {
+            return hooks.releaseTrackingRestoreTarget(targetId);
           },
         }
       : {}),
@@ -554,6 +579,7 @@ test('unknown and forbidden option fields are ignored while missing options use 
     models3dMode: 'all',
     selectedFlightsTrackingId: null,
     selectedMilitaryTrackingId: null,
+    ...SHOWN_FLIGHT_CATEGORIES,
   });
   assert.deepEqual(decoded.options.radio, { filter: 'news', volume: 0.35 });
 
@@ -902,10 +928,10 @@ test('a share link that carries 3D OFF still restores OFF at both aircraft layer
     shareCreatedAtMs: 1_000,
   });
   assert.deepEqual(calls.flights, [
-    { models3d: false, models3dMode: 'proximity' },
+    { models3d: false, models3dMode: 'proximity', ...SHOWN_FLIGHT_CATEGORIES },
   ]);
   assert.deepEqual(calls.military, [
-    { models3d: false, models3dMode: 'proximity' },
+    { models3d: false, models3dMode: 'proximity', ...SHOWN_FLIGHT_CATEGORIES },
   ]);
   assert.equal(coordinator.getDurableState().options.flights.models3d, false);
   coordinator.destroy();
@@ -1570,6 +1596,7 @@ test('later explicit params during init replace options without cancelling visib
     models3dMode: 'proximity',
     selectedFlightsTrackingId: null,
     selectedMilitaryTrackingId: null,
+    ...SHOWN_FLIGHT_CATEGORIES,
   });
   assert.equal(
     results.find((result) => result.layerId === 'flights').succeeded,
@@ -1624,6 +1651,7 @@ test('explicit navigation preserves unrelated visibility and option restoration'
     {
       models3d: true,
       models3dMode: 'all',
+      ...SHOWN_FLIGHT_CATEGORIES,
     },
   ]);
   assert.equal(
@@ -1691,6 +1719,7 @@ test('startup gesture clears passive Follow but preserves slow layer and display
     models3dMode: 'all',
     irBoost: true,
     selectedFlightsTrackingId: null,
+    ...SHOWN_FLIGHT_CATEGORIES,
   });
   assert.deepEqual(manager.getLayerParams('radio'), {
     filter: 'genre:r&b',
@@ -1735,6 +1764,38 @@ test('tracking restore refreshes the destination feed before the module resolves
   assert.equal(result.refreshSucceeded, true);
 });
 
+test('tracking restore lets the layer hold the target drawable through the refresh', async () => {
+  const order = [];
+  const manager = productionManager({
+    flights: {
+      update: () => {
+        order.push('refresh');
+        return true;
+      },
+      prepareTrackingRestoreTarget: (targetId) =>
+        order.push(`prepare:${targetId}`),
+      releaseTrackingRestoreTarget: (targetId) =>
+        order.push(`release:${targetId}`),
+      resolveTrackingRestoreTarget: (targetId, options) => {
+        order.push(`resolve:${targetId}:${options.origin}`);
+        return { status: 'missing', source: 'test' };
+      },
+    },
+  });
+  await manager.setEnabled('flights', true, { origin: 'scene' });
+  order.length = 0;
+  const result = await manager.resolveLayerTrackingTarget('flights', 'abc123', {
+    origin: 'share-restore',
+  });
+  assert.deepEqual(order, [
+    'prepare:abc123',
+    'refresh',
+    'resolve:abc123:share-restore',
+    'release:abc123',
+  ]);
+  assert.equal(result.status, 'missing');
+});
+
 test('shared flight selection is deferred until destination refresh and then follows', async () => {
   const storage = memoryStorage();
   const statuses = [];
@@ -1764,7 +1825,7 @@ test('shared flight selection is deferred until destination refresh and then fol
   });
   await coordinator.start({ shareLayerState: state, shareCreatedAtMs: 1_000 });
   assert.deepEqual(paramsCalls, [
-    { models3d: true, models3dMode: 'proximity' },
+    { models3d: true, models3dMode: 'proximity', ...SHOWN_FLIGHT_CATEGORIES },
   ]);
 
   const result = await coordinator.restoreShareTrackingSelection();

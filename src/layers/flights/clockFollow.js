@@ -92,6 +92,7 @@ export function createClockFollow({ flightState, services, parts }) {
     flightState._detectionObjects.clear();
     flightState.feed._count = 0;
     flightState.feed._lastUpdate = null;
+    parts.categories?.clear();
   }
 
   return { resetMotion, absentAtHandover, handOverMotion, clear };

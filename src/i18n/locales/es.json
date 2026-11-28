@@ -4645,5 +4645,15 @@
   "Reference monitor": "Monitor de referencia",
   "Needs {envVars} — add one in Provider Settings": "Necesita {envVars} — añade una en Ajustes de proveedores",
   "CABLE \u00b7 {name}": "CABLE SUBMARINO · {name}",
-  "LANDING POINT \u00b7 {name}": "PUNTO DE AMARRE · {name}"
+  "LANDING POINT \u00b7 {name}": "PUNTO DE AMARRE · {name}",
+  "Balloon": "Globo",
+  "Aircraft": "Aeronave",
+  "Test transmitter": "Transmisor de prueba",
+  "aircraft category|Airliners": "Aviones comerciales",
+  "aircraft category|Regional": "Regionales",
+  "aircraft category|Business": "Ejecutivos",
+  "aircraft category|Light": "Ligeros",
+  "aircraft category|Helicopters": "Helicópteros",
+  "aircraft category|Ground": "En tierra",
+  "aircraft category|Other": "Otros"
 }

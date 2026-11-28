@@ -73,8 +73,12 @@ export function aircraftViewRef(kind, frame) {
     const f = rotorFrameIndex(frame);
     return refAt(subjects[`helicopter${f}`], kind, f);
   }
-  return STILL_KINDS.has(kind) ? refAt(subjects[kind], kind) : null;
+  const still = DEFAULT_JET_KINDS.has(kind) ? 'airliner' : kind;
+  return STILL_KINDS.has(still) ? refAt(subjects[still], still) : null;
 }
+
+/** Classes with no glyph of their own, drawn as the default jet. */
+const DEFAULT_JET_KINDS = new Set(['unknown', 'balloon', 'regionaljet']);
 
 /** Draw ports the sheet is registered on. */
 const registered = new WeakSet();

@@ -1,4 +1,4 @@
-import { VEHICLE_TINT_CSS } from '../../data/aircraftClass.js';
+import { isStationClass, VEHICLE_TINT_CSS } from '../../data/aircraftClass.js';
 import { aircraftIcon } from '../../data/aircraftIcons.js';
 import {
   aircraftViewRef,
@@ -403,7 +403,7 @@ export function createLocalAdsbLayer({
           }
         : {
             rotationMode: 'screen',
-            rotation: kind === 'station' ? 0 : markerRotation(marker, basis),
+            rotation: isStationClass(kind) ? 0 : markerRotation(marker, basis),
           }),
       // The 3D model, once loaded and placed, is the visual instead.
       show: !marker.modelOwnsVisual,

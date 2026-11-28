@@ -4435,5 +4435,15 @@
   "Reference monitor": "参考监测仪",
   "Needs {envVars} — add one in Provider Settings": "需要 {envVars}，请在服务商设置中添加其中一个",
   "CABLE \u00b7 {name}": "海缆 · {name}",
-  "LANDING POINT \u00b7 {name}": "登陆点 · {name}"
+  "LANDING POINT \u00b7 {name}": "登陆点 · {name}",
+  "Balloon": "气球",
+  "Aircraft": "航空器",
+  "Test transmitter": "测试发射机",
+  "aircraft category|Airliners": "客机",
+  "aircraft category|Regional": "支线飞机",
+  "aircraft category|Business": "公务机",
+  "aircraft category|Light": "轻型飞机",
+  "aircraft category|Helicopters": "直升机",
+  "aircraft category|Ground": "地面",
+  "aircraft category|Other": "其他"
 }

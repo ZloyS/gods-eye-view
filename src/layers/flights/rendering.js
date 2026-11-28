@@ -14,6 +14,9 @@ import {
 import * as policy from './policy.js';
 import { createAircraftModels } from '../../data/aircraftModelLayer.js';
 
+/** What a ground transmitter's model is chosen by: a ground station's type. */
+const GROUND_STATION = Object.freeze({ typeCode: 'GRND' });
+
 export function createRendering({
   flightState,
   services,
@@ -60,8 +63,11 @@ export function createRendering({
     return flightState.records.data.get(icao24)?.onGround ? GROUND_SCALE : 1;
   }
 
-  /** The fleet model an aircraft draws with, by its type and emitter category. */
+  /** The fleet model an aircraft draws with, by its type and emitter category;
+   *  a ground transmitter or a feed's station (GRND, TWR, GND) draws a ground
+   *  station's mast whatever its type. */
   function _modelSpec(meta) {
+    if (meta?.transmitter === true || meta?.stationType) meta = GROUND_STATION;
     const key = aircraftModelSpecCacheKey(meta);
     const cached = flightState._specCache.get(key);
     if (cached) return cached;

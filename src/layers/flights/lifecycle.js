@@ -33,7 +33,7 @@ export function createLifecycle({
      * click-to-track handler on the scene canvas.
      * @param {object} viewer - The viewer.
      */
-    init(viewer) {
+    init(viewer, { panel = null } = {}) {
       if (flightState._viewer)
         throw new Error('Flight layer is already initialized');
       if (typeof flightState.feed._source?.getSnapshot !== 'function')
@@ -43,6 +43,8 @@ export function createLifecycle({
       clearFocusTarget('flights');
       flightState._focusEvidenceIds.clear();
       flightState._viewer = viewer;
+      // Asks the layer panel to paint the row again (the category counts).
+      flightState._panel = panel;
       parts.icons._createIcons(viewer);
       // The models' draw sets. Every fleet model loads once, up front, for
       // every layer that draws them (fleetModels.js), so no model is fetched
@@ -270,6 +272,8 @@ export function createLifecycle({
         flightState._enrichDripTimer = null;
       }
       flightState.records.missingPolls.clear();
+      parts.categories?.clear();
+      flightState._restoreCandidate = null;
       flightState._focusEvidenceIds.clear();
       flightState.feed._count = 0;
       flightState.feed._lastUpdate = null;

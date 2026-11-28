@@ -3,6 +3,7 @@
 import { msg, t } from '../i18n/index.js';
 import { UNNAMED_PLACE_NAMES } from './installationNames.js';
 import { formatDistanceText } from './distanceFormat.js';
+import { AIRCRAFT_CLASS_LABELS, aircraftCategory } from './aircraftClass.js';
 
 const UNNAMED_NAMES = new Set(UNNAMED_PLACE_NAMES);
 
@@ -14,10 +15,71 @@ export const AWARENESS_RELATIONSHIP = Object.freeze({
   UNKNOWN: 'UNKNOWN',
 });
 
+/** A filter word or class id, lower-cased, letters and digits only. */
+const compactWord = (value) =>
+  String(value || '')
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, '');
+
 /**
- * Whether an aircraft matches a spoken class filter ("helicopter", "tanker"),
- * on its class or type fields. No filter matches everything; an aircraft
- * with no class or type matches no filter.
+ * The words for each Flights category ({@link AIRCRAFT_CATEGORIES}), its
+ * chip label among them.
+ */
+const CATEGORY_WORDS = new Map([
+  ['airliner', 'airliners'],
+  ['regional', 'regional'],
+  ['turboprop', 'regional'],
+  ['business', 'bizjets'],
+  ['businessjet', 'bizjets'],
+  ['bizjet', 'bizjets'],
+  ['light', 'light'],
+  ['lightaircraft', 'light'],
+  ['helicopter', 'helicopters'],
+  ['station', 'ground'],
+  ['ground', 'ground'],
+  ['vehicle', 'ground'],
+  ['other', 'other'],
+  ['unknown', 'other'],
+]);
+
+/**
+ * The classes each class word names: its id, its card word and the card
+ * word's first part ("drone" is `uav`, "airliner" also `regionaljet`,
+ * "ground station" `station`). An untyped contact's card word ("Aircraft")
+ * names nothing; only its id does.
+ */
+const CLASS_WORDS = new Map();
+for (const [klass, label] of Object.entries(AIRCRAFT_CLASS_LABELS)) {
+  const words =
+    klass === 'unknown'
+      ? [klass]
+      : [klass, compactWord(label), compactWord(String(label).split('/')[0])];
+  for (const word of words) {
+    if (!CLASS_WORDS.has(word)) CLASS_WORDS.set(word, new Set());
+    CLASS_WORDS.get(word).add(klass);
+  }
+}
+
+/**
+ * A word and its singular forms ("widebodies" also "widebody").
+ * @param {string} word
+ * @returns {string[]}
+ */
+function wordForms(word) {
+  const forms = [word];
+  if (word.endsWith('ies')) forms.push(`${word.slice(0, -3)}y`);
+  if (word.endsWith('s')) forms.push(word.slice(0, -1));
+  return forms;
+}
+
+/**
+ * Whether an aircraft matches a spoken class filter ("helicopter", "tanker").
+ * A class word ("turboprop", "widebody", "drone", "unknown") matches only its
+ * class, even where it also names a category. A category's word ("regional",
+ * "ground", "other") matches every class in that Flights category, so an
+ * untyped contact matches "other" and "unknown" only. Any other word matches
+ * part of the class or type fields. No filter matches everything; an
+ * aircraft with no class or type matches no filter.
  * @param {object} item Aircraft summary (`getNearby` row or cohort item).
  * @param {string|null} aircraftClass Requested class.
  * @returns {boolean}
@@ -27,8 +89,32 @@ export function aircraftClassMatches(item, aircraftClass) {
     String(value || '')
       .trim()
       .toLowerCase();
-  const requested = normalize(aircraftClass);
-  if (!requested) return true;
+  const word = normalize(aircraftClass);
+  if (!word) return true;
+  // A word with no Latin letters or digits ("вертолёт") names no class or
+  // category here; it can still match part of a type field.
+  const requested = compactWord(aircraftClass);
+  if (requested) {
+    const classes = [item?.aircraftClass, item?.klass]
+      .map(compactWord)
+      .filter(Boolean);
+    const forms = wordForms(requested);
+    if (
+      classes.some((klass) =>
+        forms.some(
+          (form) => klass === form || CLASS_WORDS.get(form)?.has(klass),
+        ),
+      )
+    )
+      return true;
+    const category = forms
+      .map((form) => CATEGORY_WORDS.get(form))
+      .find(Boolean);
+    if (category) {
+      if (forms.some((form) => CLASS_WORDS.has(form))) return false;
+      return classes.some((klass) => aircraftCategory(klass) === category);
+    }
+  }
   return [
     item?.aircraftClass,
     item?.klass,
@@ -37,10 +123,8 @@ export function aircraftClassMatches(item, aircraftClass) {
     item?.typeName,
   ]
     .map(normalize)
-    .filter(Boolean)
-    .some(
-      (candidate) => candidate === requested || candidate.includes(requested),
-    );
+    .filter((candidate) => candidate && candidate !== 'unknown')
+    .some((candidate) => candidate.includes(word));
 }
 
 /**

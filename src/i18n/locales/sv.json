@@ -4540,5 +4540,15 @@
   "Reference monitor": "Referensinstrument",
   "Needs {envVars} — add one in Provider Settings": "Kräver {envVars} – lägg till en av dem i Leverantörsinställningar",
   "CABLE \u00b7 {name}": "KABEL · {name}",
-  "LANDING POINT \u00b7 {name}": "LANDNINGSPUNKT · {name}"
+  "LANDING POINT \u00b7 {name}": "LANDNINGSPUNKT · {name}",
+  "Balloon": "Ballong",
+  "Aircraft": "Luftfartyg",
+  "Test transmitter": "Testsändare",
+  "aircraft category|Airliners": "Trafikflygplan",
+  "aircraft category|Regional": "Regionala",
+  "aircraft category|Business": "Affärsjetar",
+  "aircraft category|Light": "Lätta",
+  "aircraft category|Helicopters": "Helikoptrar",
+  "aircraft category|Ground": "På marken",
+  "aircraft category|Other": "Övriga"
 }

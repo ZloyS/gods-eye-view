@@ -1,7 +1,14 @@
 // src/data/aircraftClass.test.mjs
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { AIRCRAFT_CLASS_LABELS, classifyAircraft } from './aircraftClass.js';
+import {
+  AIRCRAFT_CATEGORIES,
+  AIRCRAFT_CATEGORY_LABELS,
+  AIRCRAFT_CLASS_LABELS,
+  aircraftCategory,
+  classifyAircraft,
+  isGroundTransmitter,
+} from './aircraftClass.js';
 
 test('type-code classification (military layer path)', () => {
   assert.equal(classifyAircraft({ typeCode: 'F16' }), 'fastjet');
@@ -42,10 +49,181 @@ test('ADS-B emitter string categories', () => {
   assert.equal(classifyAircraft({ category: 'B1' }), 'glider');
 });
 
-test('typeCode outranks category; unknown → airliner', () => {
+test('typeCode outranks category; unknown → unknown', () => {
   assert.equal(classifyAircraft({ typeCode: 'F18', category: 6 }), 'fastjet');
-  assert.equal(classifyAircraft({}), 'airliner');
-  assert.equal(classifyAircraft({ typeCode: null, category: 0 }), 'airliner');
+  assert.equal(classifyAircraft({}), 'unknown');
+  assert.equal(classifyAircraft({ typeCode: null, category: 0 }), 'unknown');
+  // A type in no set is unknown, whatever its category says.
+  assert.equal(classifyAircraft({ typeCode: 'ZZZZ' }), 'unknown');
+  assert.equal(
+    classifyAircraft({ typeCode: 'ZZZZ', category: 'A1' }),
+    'unknown',
+  );
+  assert.equal(classifyAircraft({ typeCode: 'ZZZZ', category: 4 }), 'unknown');
+  assert.equal(AIRCRAFT_CLASS_LABELS.unknown, 'Aircraft');
+});
+
+test('narrow-body jets are airliners, regional jets their own class', () => {
+  for (const typeCode of ['A20N', 'A321', 'B38M', 'B752', 'BCS3', 'MD88'])
+    assert.equal(classifyAircraft({ typeCode }), 'airliner', typeCode);
+  for (const typeCode of ['CRJ9', 'E75L', 'E190', 'E45X', 'E275', 'RJ85'])
+    assert.equal(classifyAircraft({ typeCode }), 'regionaljet', typeCode);
+  assert.equal(
+    AIRCRAFT_CLASS_LABELS.regionaljet,
+    AIRCRAFT_CLASS_LABELS.airliner,
+  );
+});
+
+test('light, turboprop, business-jet and balloon types from a live sample', () => {
+  const expected = {
+    light: [
+      'C402',
+      'T210',
+      'PA31',
+      'P212',
+      'T206',
+      'PA30',
+      'TB20',
+      'DV20',
+      'PA11',
+      'PA22',
+      'C140',
+      'C77R',
+      'BE55',
+      'BE95',
+      'M7',
+      'ERCO',
+      'RV12',
+      'XL2',
+      'WT9',
+      'CH7A',
+      'CH7B',
+      'DHC1',
+      'T34P',
+      'LNP4',
+      'PISI',
+      'PIAT',
+      'P06T',
+      'P208',
+      'P68',
+      'BN2P',
+    ],
+    turboprop: ['F406', 'SC7', 'BE9L', 'BE10', 'C27J', 'C30J'],
+    bizjet: ['E35L', 'EA50', 'C55B', 'GALX'],
+    balloon: ['BALL'],
+  };
+  for (const [klass, codes] of Object.entries(expected))
+    for (const typeCode of codes)
+      assert.equal(classifyAircraft({ typeCode }), klass, typeCode);
+});
+
+test('lighter-than-air, ultralight and drone emitter categories', () => {
+  assert.equal(classifyAircraft({ category: 'B2' }), 'balloon');
+  assert.equal(classifyAircraft({ category: 10 }), 'balloon');
+  assert.equal(classifyAircraft({ category: 'B4' }), 'light');
+  assert.equal(classifyAircraft({ category: 12 }), 'light');
+  assert.equal(classifyAircraft({ category: 'B6' }), 'uav');
+  assert.equal(classifyAircraft({ category: 14 }), 'uav');
+});
+
+test('TWR and GND are ground stations, as GRND is', () => {
+  for (const typeCode of ['GRND', 'TWR', 'GND', ' twr '])
+    assert.equal(classifyAircraft({ typeCode }), 'station', typeCode);
+});
+
+test('ground and test transmitters are ground stations whatever their type', () => {
+  for (const callsign of ['TXLU00', 'TXLU13', ' txlu7 '])
+    for (const typeCode of [null, 'ZVEH', 'A320']) {
+      assert.equal(isGroundTransmitter({ callsign }), true, callsign);
+      assert.equal(
+        classifyAircraft({ typeCode, callsign }),
+        'station',
+        `${callsign} ${typeCode}`,
+      );
+    }
+  // A test callsign on the ground; the same callsign flying is an aircraft.
+  for (const callsign of ['ADSTEST', 'TEST', 'TEST1', 'ADSTEST12']) {
+    assert.equal(
+      classifyAircraft({ typeCode: 'ZVEH', callsign, onGround: true }),
+      'testtransmitter',
+      callsign,
+    );
+    assert.equal(
+      classifyAircraft({ typeCode: 'A320', callsign, onGround: false }),
+      'airliner',
+      callsign,
+    );
+  }
+  // A feed's ground transmitter (readsb C0 adsb_icao_nt on the ground).
+  assert.equal(classifyAircraft({ transmitter: true }), 'station');
+  assert.equal(
+    classifyAircraft({ typeCode: 'ZVEH', transmitter: true }),
+    'station',
+  );
+  // Look-alikes are not transmitters.
+  for (const callsign of ['TXLU', 'TXLUX1', 'TESTA', 'ATEST', 'DLH400'])
+    assert.equal(
+      isGroundTransmitter({ callsign, onGround: true }),
+      false,
+      callsign,
+    );
+});
+
+test('every class falls in one of the seven categories', () => {
+  assert.deepEqual(AIRCRAFT_CATEGORIES, [
+    'airliners',
+    'regional',
+    'bizjets',
+    'light',
+    'helicopters',
+    'ground',
+    'other',
+  ]);
+  const expected = {
+    airliner: 'airliners',
+    widebody: 'airliners',
+    quadjet: 'airliners',
+    turboprop: 'regional',
+    regionaljet: 'regional',
+    bizjet: 'bizjets',
+    light: 'light',
+    helicopter: 'helicopters',
+    vehicle: 'ground',
+    station: 'ground',
+    testtransmitter: 'ground',
+    glider: 'other',
+    balloon: 'other',
+    fastjet: 'other',
+    uav: 'other',
+    unknown: 'other',
+  };
+  assert.deepEqual(
+    Object.keys(AIRCRAFT_CLASS_LABELS).sort(),
+    Object.keys(expected).sort(),
+  );
+  for (const [klass, category] of Object.entries(expected))
+    assert.equal(aircraftCategory(klass), category, klass);
+  assert.equal(aircraftCategory(undefined), 'other');
+  assert.equal(aircraftCategory('constructor'), 'other');
+  for (const category of AIRCRAFT_CATEGORIES)
+    assert.ok(AIRCRAFT_CATEGORY_LABELS[category], category);
+  // Each category from the classifier end to end.
+  const samples = {
+    airliners: { typeCode: 'A320' },
+    regional: { typeCode: 'AT76' },
+    bizjets: { typeCode: 'C56X' },
+    light: { typeCode: 'C172' },
+    helicopters: { typeCode: 'EC35' },
+    ground: { typeCode: 'ZVEH' },
+    other: { typeCode: 'F16' },
+  };
+  for (const [category, record] of Object.entries(samples))
+    assert.equal(
+      aircraftCategory(classifyAircraft(record)),
+      category,
+      category,
+    );
+  assert.equal(aircraftCategory(classifyAircraft({})), 'other');
 });
 
 test('every class has a label', () => {
@@ -54,14 +232,18 @@ test('every class has a label', () => {
     'glider',
     'turboprop',
     'airliner',
+    'regionaljet',
     'widebody',
     'quadjet',
     'helicopter',
     'fastjet',
     'bizjet',
     'uav',
+    'balloon',
     'vehicle',
     'station',
+    'testtransmitter',
+    'unknown',
   ]) {
     assert.ok(AIRCRAFT_CLASS_LABELS[kind], kind);
   }
